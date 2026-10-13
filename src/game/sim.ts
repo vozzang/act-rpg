@@ -1,6 +1,6 @@
 // 게임 시뮬레이션. 호스트에서만 실행되고, 클라이언트는 스냅샷을 받아 그리기만 한다.
 import {
-  CLASSES, ENEMIES, GRAVITY, REVIVE_TIME, SKILL, TILE, VIEW_W, ZONE_NAMES,
+  type AttackDef, CLASSES, ENEMIES, GRAVITY, REVIVE_TIME, SKILL, TILE, VIEW_W, ZONE_NAMES,
   makeItem, partyHpScale, xpForLevel, zoneScale,
 } from './data';
 import { buildLevel, mulberry32, T_SOLID, tileAt, type Level } from './level';
@@ -10,6 +10,8 @@ import {
   type Drop, type Enemy, type EnemyKind, type GameEvent, type GameStatus, type InputState,
   type LobbyPlayer, type Player, type Projectile, type Snapshot,
 } from './types';
+
+type ProjectileAttack = Extract<AttackDef, { kind: 'projectile' }>;
 
 export class Sim {
   readonly level: Level;
@@ -213,11 +215,12 @@ export class Sim {
       }
     } else {
       const d = this.rollDamage(p, a.mult);
+      const sx = cx + p.facing * p.w / 2, sy = p.y + p.h * 0.4;
       this.projectiles.push({
         id: this.nextId++, fromPlayer: true, ownerId: p.id, kind: a.proj,
-        x: cx + p.facing * p.w / 2, y: p.y + p.h * 0.4,
-        vx: p.facing * a.speed, vy: 0, r: a.proj === 'orb' ? 9 : 5,
-        dmg: d.v, crit: d.crit, life: 1.2, grav: 0, aoe: a.aoe, pierce: false, hitIds: [],
+        x: sx, y: sy,
+        vx: p.facing * a.speed, vy: -this.aimLift(p, a, sx, sy), r: a.proj === 'orb' ? 9 : 5,
+        dmg: d.v, crit: d.crit, life: 1.2, grav: a.grav, aoe: a.aoe, pierce: false, hitIds: [],
       });
     }
   }
@@ -252,16 +255,19 @@ export class Sim {
 
       case 'elf': {
         const { arrows, spread, mult } = SKILL.volley;
-        const speed = (CLASSES.elf.attack as { speed: number }).speed;
+        const a = CLASSES.elf.attack as ProjectileAttack;
+        const { speed, grav } = a;
+        const sx = cx + p.facing * p.w / 2, sy = p.y + p.h * 0.4;
+        const lift = this.aimLift(p, a, sx, sy);
         p.atkAnim = 0.25;
         for (let i = 0; i < arrows; i++) {
           const ang = -spread / 2 + (spread * i) / (arrows - 1);
           const d = this.rollDamage(p, mult);
           this.projectiles.push({
             id: this.nextId++, fromPlayer: true, ownerId: p.id, kind: 'arrow',
-            x: cx + p.facing * p.w / 2, y: p.y + p.h * 0.4,
-            vx: Math.cos(ang) * speed * p.facing, vy: Math.sin(ang) * speed, r: 6,
-            dmg: d.v, crit: d.crit, life: 1, grav: 0, aoe: 0, pierce: true, hitIds: [],
+            x: sx, y: sy,
+            vx: Math.cos(ang) * speed * p.facing, vy: Math.sin(ang) * speed - lift, r: 6,
+            dmg: d.v, crit: d.crit, life: 1.2, grav, aoe: 0, pierce: true, hitIds: [],
           });
         }
         this.events.push({ t: 'skill', pid: p.id, x: cx, y: cy, r: 0 });
@@ -297,6 +303,29 @@ export class Sim {
       }
     }
     if (p.dashTime <= 0) p.vx = p.facing * CLASSES[p.cls].speed;
+  }
+
+  /**
+   * 포물선 투사체의 위쪽 초속을 구한다. 앞쪽 가장 가까운 적의 중심에 떨어지도록 계산하므로
+   * 가까운 적에게는 거의 직선으로, 먼 적에게는 높게 휘어 날아간다.
+   */
+  private aimLift(p: Player, a: ProjectileAttack, sx: number, sy: number): number {
+    if (a.grav <= 0) return a.lift;
+    let best: Enemy | null = null;
+    let bestDx = a.aimRange;
+    for (const e of this.enemies) {
+      if (!e.active || e.hp <= 0) continue;
+      const dx = (e.x + e.w / 2 - sx) * p.facing;
+      if (dx > 0 && dx < bestDx && Math.abs(e.y + e.h / 2 - sy) < 260) {
+        bestDx = dx;
+        best = e;
+      }
+    }
+    if (!best) return a.lift;
+    const t = bestDx / a.speed;
+    const dy = best.y + best.h / 2 - sy; // 아래가 +
+    const lift = ((a.grav * t * t) / 2 - dy) / t;
+    return Math.max(-200, Math.min(600, lift));
   }
 
   private tryPickup(p: Player) {
@@ -464,7 +493,7 @@ export class Sim {
     const cx = e.x + e.w / 2;
     const feet = e.y + e.h;
     if (e.kind === 'boss') {
-      this.events.push({ t: 'boom', x: cx, y: e.y + e.h / 2, r: 140 });
+      this.events.push({ t: 'boom', x: cx, y: e.y + e.h / 2, r: 140, shake: true });
       this.events.push({ t: 'banner', text: '승리!', sub: `${ENEMIES.boss.name}을(를) 쓰러뜨렸다` });
       this.endWith('victory', 3);
       return;
@@ -641,7 +670,7 @@ export class Sim {
               vx: sdir * 420, vy: 0, r: 14, dmg: e.atk, crit: false, life: 1.4, grav: 0, aoe: 0, pierce: false, hitIds: [],
             });
           }
-          this.events.push({ t: 'boom', x: e.x + e.w / 2, y: e.y + e.h, r: 70 });
+          this.events.push({ t: 'boom', x: e.x + e.w / 2, y: e.y + e.h, r: 70, shake: true });
           this.setState(e, 'move');
           e.timer = cooldown();
         }

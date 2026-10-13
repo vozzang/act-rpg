@@ -14,7 +14,12 @@ export const ZONE_NAMES = ['초록 숲', '고블린 협곡', '해골 묘지', '�
 
 export type AttackDef =
   | { kind: 'melee'; cd: number; mult: number; range: number; height: number; knock: number }
-  | { kind: 'projectile'; cd: number; mult: number; speed: number; proj: 'arrow' | 'orb'; aoe: number };
+  | {
+      kind: 'projectile'; cd: number; mult: number; speed: number; proj: 'arrow' | 'orb'; aoe: number;
+      lift: number; // 조준할 적이 없을 때 위쪽 초속 (포물선 높이)
+      grav: number; // 투사체에 걸리는 중력 (0이면 직선). 0보다 크면 앞쪽 가장 가까운 적에게 포물선으로 조준한다.
+      aimRange: number;
+    };
 
 export interface SkillDef {
   name: string;
@@ -62,7 +67,7 @@ export const CLASSES: Record<ClassId, ClassDef> = {
     name: '궁수', race: '엘프', color: 0x4caf50, w: 22, h: 56, speed: 245, jump: 680, aggro: 1.2,
     base: { maxHp: 90, atk: 13, def: 2, crit: 0.15 },
     growth: { maxHp: 10, atk: 2.8, def: 0.6, crit: 0.006 },
-    attack: { kind: 'projectile', cd: 0.42, mult: 0.9, speed: 760, proj: 'arrow', aoe: 0 },
+    attack: { kind: 'projectile', cd: 0.42, mult: 0.9, speed: 680, proj: 'arrow', aoe: 0, lift: 330, grav: 850, aimRange: 720 },
     skill: { name: '부채 사격', cd: 6, desc: '적을 관통하는 화살 5발을 부채꼴로 쏜다.' },
     weaponNoun: '장궁',
     desc: '멀리 날아가는 화살. 치명타 확률이 높다.',
@@ -71,7 +76,7 @@ export const CLASSES: Record<ClassId, ClassDef> = {
     name: '마법사', race: '노움', color: 0x9c5bd6, w: 20, h: 32, speed: 215, jump: 620, aggro: 1.2,
     base: { maxHp: 80, atk: 16, def: 1, crit: 0.06 },
     growth: { maxHp: 9, atk: 3.4, def: 0.5, crit: 0.003 },
-    attack: { kind: 'projectile', cd: 0.75, mult: 1.2, speed: 430, proj: 'orb', aoe: 80 },
+    attack: { kind: 'projectile', cd: 0.75, mult: 1.2, speed: 430, proj: 'orb', aoe: 80, lift: 0, grav: 0, aimRange: 0 },
     skill: { name: '치유의 빛', cd: 14, desc: '주변 동료를 30% 회복하고 쓰러진 동료를 일으킨다.' },
     weaponNoun: '지팡이',
     desc: '터지는 마법 구체로 여러 적에게 피해를 준다.',

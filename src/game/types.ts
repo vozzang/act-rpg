@@ -116,7 +116,7 @@ export interface Drop {
 export type GameEvent =
   | { t: 'dmg'; x: number; y: number; v: number; crit: boolean; toPlayer: boolean }
   | { t: 'heal'; x: number; y: number; v: number }
-  | { t: 'boom'; x: number; y: number; r: number }
+  | { t: 'boom'; x: number; y: number; r: number; shake?: boolean }
   | { t: 'levelup'; pid: string; level: number }
   | { t: 'equip'; pid: string; item: Item }
   | { t: 'down'; pid: string }

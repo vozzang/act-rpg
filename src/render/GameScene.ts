@@ -521,7 +521,7 @@ export class GameScene extends Phaser.Scene {
         const c = this.add.circle(e.x, e.y, e.r, 0xffc070, 0.45).setDepth(30);
         c.setScale(0.3);
         this.tweens.add({ targets: c, scale: 1, alpha: 0, duration: 300, onComplete: () => c.destroy() });
-        if (e.r > 60) this.cameras.main.shake(150, 0.006);
+        if (e.shake) this.cameras.main.shake(150, 0.006);
         break;
       }
       case 'levelup': {
