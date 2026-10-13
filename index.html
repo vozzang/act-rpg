@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Act RPG</title>
+  <style>
+    :root {
+      --bg: #0f1522;
+      --panel: #1a2336;
+      --line: #2c3a56;
+      --text: #e8ecf4;
+      --muted: #8d9ab3;
+      --accent: #5aa8ff;
+      --danger: #ff6a6a;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+      font-family: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; }
+    .screen { display: none; min-height: 100%; align-items: center; justify-content: center; padding: 24px 16px; }
+    .screen.active { display: flex; }
+    .box { width: 100%; max-width: 820px; background: var(--panel); border: 1px solid var(--line);
+      border-radius: 14px; padding: 28px; }
+    h1 { margin: 0 0 4px; font-size: 34px; letter-spacing: 1px; }
+    h2 { margin: 0 0 16px; font-size: 20px; }
+    .sub { color: var(--muted); margin: 0 0 24px; }
+    label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+    input { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--line);
+      background: #0e1420; color: var(--text); font-size: 16px; }
+    button { padding: 12px 18px; border-radius: 8px; border: 1px solid var(--line); background: #24314c;
+      color: var(--text); font-size: 15px; cursor: pointer; }
+    button:hover:not(:disabled) { border-color: var(--accent); }
+    button.primary { background: var(--accent); border-color: var(--accent); color: #0b1220; font-weight: 700; }
+    button:disabled { opacity: 0.45; cursor: default; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: end; }
+    .row > * { flex: 1 1 160px; }
+    .stack > * + * { margin-top: 16px; }
+    .error { color: var(--danger); min-height: 1.4em; margin: 12px 0 0; }
+    .code { font-size: 32px; font-weight: 800; letter-spacing: 6px; color: var(--accent); }
+    .classes { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin: 18px 0; }
+    .card { border: 2px solid var(--line); border-radius: 10px; padding: 14px; cursor: pointer; background: #141c2c;
+      text-align: left; color: var(--text); font-size: 14px; }
+    .card.mine { border-color: #fff; }
+    .card.taken { opacity: 0.45; cursor: default; }
+    .card .race { color: var(--muted); font-size: 12px; }
+    .card .name { font-size: 18px; font-weight: 700; margin: 2px 0 8px; }
+    .card .desc { font-size: 12px; color: #c4cbe0; min-height: 3em; }
+    .card .skill { font-size: 12px; color: #f0d890; margin-top: 8px; line-height: 1.5; }
+    .card .stats { font-size: 12px; color: var(--muted); margin-top: 8px; }
+    .card .owner { margin-top: 8px; font-size: 12px; font-weight: 700; min-height: 1.2em; }
+    .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; }
+    .players { list-style: none; padding: 0; margin: 0; }
+    .players li { padding: 8px 0; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; }
+    #game { display: none; position: fixed; inset: 0; background: #000; }
+    #game.active { display: block; }
+    .hint { color: var(--muted); font-size: 13px; margin-top: 14px; line-height: 1.6; }
+  </style>
+</head>
+<body>
+  <section id="menu" class="screen active">
+    <div class="box stack">
+      <div>
+        <h1>ACT RPG</h1>
+        <p class="sub">4인 협동 횡스크롤 액션 RPG — 저장은 없다. 처음부터 끝까지 한 번에.</p>
+      </div>
+      <div>
+        <label for="name">닉네임</label>
+        <input id="name" maxlength="10" placeholder="모험가" />
+      </div>
+      <div class="row">
+        <button id="btn-create" class="primary">방 만들기</button>
+        <button id="btn-solo">혼자 하기</button>
+      </div>
+      <div class="row">
+        <div>
+          <label for="code">방 코드로 참가</label>
+          <input id="code" maxlength="5" placeholder="ABCDE" style="text-transform: uppercase" />
+        </div>
+        <button id="btn-join">참가하기</button>
+      </div>
+      <p id="menu-error" class="error"></p>
+    </div>
+  </section>
+
+  <section id="room" class="screen">
+    <div class="box">
+      <div class="row" style="align-items: center">
+        <div>
+          <h2 id="room-title">대기실</h2>
+          <div id="room-code-wrap">
+            <label>방 코드 (친구에게 알려주세요)</label>
+            <span id="room-code" class="code"></span>
+            <button id="btn-copy" style="margin-left: 10px">초대 링크 복사</button>
+          </div>
+        </div>
+      </div>
+      <div class="classes" id="classes"></div>
+      <ul class="players" id="players"></ul>
+      <div class="row" style="margin-top: 18px">
+        <button id="btn-leave">나가기</button>
+        <button id="btn-start" class="primary">게임 시작</button>
+      </div>
+      <p id="room-status" class="hint"></p>
+      <p class="hint">조작: 이동 A/D(←/→) · 점프 W/Space · 공격 J · 스킬 K · 아이템 줍기 S · 게임패드 지원<br />
+        쓰러진 동료 옆에 2초간 서 있으면 부활시킬 수 있고, 새 구역에 들어서면 모두 부활·회복합니다.</p>
+    </div>
+  </section>
+
+  <div id="game"></div>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
