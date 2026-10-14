@@ -1,12 +1,15 @@
 // PeerJS(WebRTC) 기반 P2P 통신. 방장(호스트)이 게임을 계산하고 참가자는 입력만 보낸다.
 // PeerJS 공개 중계 서버는 접속 연결(시그널링)에만 쓰이고, 게임 데이터는 브라우저끼리 직접 주고받는다.
 import Peer, { type DataConnection } from 'peerjs';
-import type { ClassId, InputState, LobbyPlayer, Snapshot } from '../game/types';
+import type { AttrKey, ClassId, InputState, LobbyPlayer, Snapshot } from '../game/types';
 
 export type ClientMsg =
   | { t: 'hello'; name: string }
   | { t: 'pick'; cls: ClassId }
-  | { t: 'input'; input: InputState };
+  | { t: 'input'; input: InputState }
+  | { t: 'alloc'; attr: AttrKey }
+  | { t: 'buy'; shop: number; idx: number }
+  | { t: 'slot'; idx: number }; // 아이템 상자 칸 사용 (음식 먹기 / 장비 내려놓기)
 
 export type HostMsg =
   | { t: 'lobby'; players: LobbyPlayer[]; you: string }

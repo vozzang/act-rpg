@@ -45,8 +45,10 @@
     .card .race { color: var(--muted); font-size: 12px; }
     .card .name { font-size: 18px; font-weight: 700; margin: 2px 0 8px; }
     .card .desc { font-size: 12px; color: #c4cbe0; min-height: 3em; }
-    .card .skill { font-size: 12px; color: #f0d890; margin-top: 8px; line-height: 1.5; }
-    .card .stats { font-size: 12px; color: var(--muted); margin-top: 8px; }
+    .card .skill { font-size: 12px; color: #f0d890; margin-top: 8px; line-height: 1.6; }
+    .card .skill .mp { color: #8fb4ff; }
+    .card .stats { font-size: 12px; color: var(--muted); margin-top: 8px; line-height: 1.5; }
+    .card .stats b { color: var(--text); }
     .card .owner { margin-top: 8px; font-size: 12px; font-weight: 700; min-height: 1.2em; }
     .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; }
     .players { list-style: none; padding: 0; margin: 0; }
@@ -61,7 +63,7 @@
     <div class="box stack">
       <div>
         <h1>ACT RPG</h1>
-        <p class="sub">4인 협동 횡스크롤 액션 RPG — 저장은 없다. 처음부터 끝까지 한 번에.</p>
+        <p class="sub">4인 협동 3D 액션 RPG — 저장은 없다. 처음부터 끝까지 한 번에.</p>
       </div>
       <div>
         <label for="name">닉네임</label>
@@ -101,7 +103,11 @@
         <button id="btn-start" class="primary">게임 시작</button>
       </div>
       <p id="room-status" class="hint"></p>
-      <p class="hint">조작: 이동 A/D(←/→) · 점프 W/Space · 공격 J · 스킬 K · 아이템 줍기 S · 게임패드 지원<br />
+      <p class="hint">조작: 이동 WASD · 조준 마우스 · 공격 좌클릭(Z) · 스킬 1~4 (우클릭·X = 1번) · 아이템 줍기·상점 E · 음식 먹기 Q·R · 아이템 상자 5~0·클릭(먹기·내려놓기) · 캐릭터 메뉴 I · 지도 Tab(M)<br />
+        게임패드: 이동 왼쪽 스틱 · 공격 X · 스킬 A·B·Y·RT · 음식 LB·RB · 줍기·상점 LT · 캐릭터 메뉴 Menu · 지도 View (조준은 오른쪽 스틱, 안 쓰면 자동 조준)<br />
+        키보드만 쓸 때: 방향키로 이동하면 이동 방향으로 공격합니다.<br />
+        스킬은 MP를 씁니다. Lv.1·4·7에 하나씩 배우고 Lv.10에 최종 스킬을 배웁니다.<br />
+        레벨업마다 능력치 포인트 3을 받습니다. Shift+1 힘 · 2 민첩 · 3 지능 · 4 체력 (화면 버튼 클릭도 가능)<br />
         쓰러진 동료 옆에 2초간 서 있으면 부활시킬 수 있고, 새 구역에 들어서면 모두 부활·회복합니다.</p>
     </div>
   </section>

@@ -1,4 +1,5 @@
 // 게임 상태 타입. 호스트의 시뮬레이션과 네트워크 스냅샷이 같은 타입을 공유한다.
+// 좌표는 모두 "월드 좌표"(위에서 내려다본 평면, px)다. 3D 변환은 렌더러(World3D)만 한다.
 
 export type ClassId = 'swordsman' | 'dwarf' | 'elf' | 'gnome';
 export type EnemyKind = 'slime' | 'goblin' | 'skeleton' | 'orc' | 'boss';
@@ -6,22 +7,41 @@ export type Slot = 'weapon' | 'armor' | 'accessory';
 export type Rarity = 'common' | 'rare' | 'epic' | 'legendary';
 
 export interface InputState {
-  left: boolean;
-  right: boolean;
-  jump: boolean;
+  mx: number; // 이동 방향 (월드 좌표, 길이 0~1)
+  my: number;
+  aim: number; // 조준 각도 (월드 좌표, 라디안)
   attack: boolean;
-  down: boolean; // 아이템 줍기
-  skill: boolean;
+  skills: number; // 누르고 있는 스킬 키 (비트마스크: 1번 스킬 = 1, 2번 = 2, 3번 = 4, 4번 = 8)
+  pickup: boolean;
+  use: number; // 아이템 상자의 음식 먹기 (비트마스크: HP 음식 = 1, MP 음식 = 2)
 }
 
-export const EMPTY_INPUT: InputState = { left: false, right: false, jump: false, attack: false, down: false, skill: false };
+export const EMPTY_INPUT: InputState = { mx: 0, my: 0, aim: 0, attack: false, skills: 0, pickup: false, use: 0 };
 
+/** 기본 능력치. 레벨업 자동 상승 + 직접 배분한 포인트 + 장비로 정해진다. */
+export interface Attrs {
+  str: number; // 힘
+  dex: number; // 민첩
+  int: number; // 지능
+  vit: number; // 체력
+}
+
+export type AttrKey = keyof Attrs;
+
+/** 능력치에서 계산되는 전투 수치 */
 export interface Stats {
   maxHp: number;
   atk: number;
   def: number;
   crit: number; // 0~1
+  haste: number; // 공격 속도 증가 (0.1 = 10% 빠름)
+  cdr: number; // 스킬 재사용 가속 (0.1 = 10% 빨리 돌아옴)
+  maxMp: number;
+  mpRegen: number; // 초당 MP 회복
 }
+
+/** 장비에 붙는 수치 */
+export type ItemStats = Partial<Record<'atk' | 'def' | 'maxHp' | 'crit' | AttrKey, number>>;
 
 export interface Item {
   id: number;
@@ -29,36 +49,49 @@ export interface Item {
   rarity: Rarity;
   zone: number; // 드랍된 구역. 이름의 재질과 기본 수치를 결정한다.
   noun?: string; // 무기는 비워두고 착용자 직업에 맞는 이름으로 표시한다.
-  stats: Partial<Stats>;
+  stats: ItemStats;
 }
 
+export type FoodKind = 'hpFood' | 'mpFood';
+
+/** 아이템 상자 한 칸: 장비 하나, 또는 같은 종류 음식 한 묶음 */
+export type InvSlot = { kind: 'item'; item: Item } | { kind: FoodKind; count: number };
+
+/** 원형 몸체. x, y는 발밑 중심. */
 export interface Body {
-  x: number; // 좌상단
+  x: number;
   y: number;
   vx: number;
   vy: number;
-  w: number;
-  h: number;
-  onGround: boolean;
+  r: number;
 }
 
 export interface Player extends Body {
   id: string;
   name: string;
   cls: ClassId;
-  facing: 1 | -1;
+  aim: number;
+  moving: boolean;
   hp: number;
+  mp: number;
   level: number;
   xp: number;
   xpNext: number;
+  attrs: Attrs; // 최종 능력치 (장비 포함)
+  alloc: Attrs; // 직접 배분한 포인트
+  points: number; // 남은 배분 포인트
+  gold: number;
+  inv: (InvSlot | null)[]; // 아이템 상자 (INV_SIZE칸). 상자에 든 장비는 모두 능력치에 더해진다
   stats: Stats;
-  equip: Partial<Record<Slot, Item>>;
   atkCd: number;
   atkAnim: number; // 공격 모션 남은 시간(렌더용)
-  skillCd: number;
-  dashTime: number; // 검사 돌진 중 남은 시간
+  skillCds: number[]; // 스킬별 남은 재사용 대기시간
+  dashTime: number; // 돌진(돌진 베기·방패 돌진) 중 남은 시간
+  dashSkill: number; // 어떤 스킬의 돌진인지 (스킬 순서)
   dashHits: number[]; // 이번 돌진에 이미 맞은 적
-  guard: number; // 드워프 방패 태세 남은 시간 (받는 피해 감소)
+  guard: number; // 받는 피해 감소 남은 시간
+  guardReduce: number; // 받는 피해 감소율
+  atkBuff: number; // 전투 함성 남은 시간
   invuln: number;
   dead: boolean;
   revive: number; // 부활 게이지 0~REVIVE_TIME
@@ -69,36 +102,43 @@ export interface Enemy extends Body {
   id: number;
   kind: EnemyKind;
   zone: number;
+  elite: string | null; // 중간보스면 그 이름 (예: '고블린 대장')
   active: boolean;
-  facing: 1 | -1;
+  aim: number; // 바라보는 방향
   hp: number;
   maxHp: number;
   atk: number;
   def: number;
   xp: number;
   hurt: number; // 피격 번쩍임
-  stun: number; // 넉백 중에는 AI가 멈춘다
+  stun: number; // 넉백·기절 중에는 AI가 멈춘다
+  slow: number; // 둔화 남은 시간
   taunt: number; // 도발 남은 시간
   tauntBy: string;
   timer: number; // AI용 범용 타이머
-  state: 'idle' | 'move' | 'windup' | 'attack' | 'charge' | 'leap';
+  state: 'move' | 'windup' | 'attack' | 'charge' | 'leap';
   stateTime: number;
+  z: number; // 점프 높이 (보스 도약)
+  tx: number; // 도약 착지 지점
+  ty: number;
 }
 
 export interface Projectile {
   id: number;
   fromPlayer: boolean;
   ownerId: string;
-  kind: 'arrow' | 'orb' | 'enemyArrow' | 'rock' | 'shockwave';
-  x: number; // 중심
+  kind: 'arrow' | 'orb' | 'fireball' | 'wave' | 'rain' | 'meteor' | 'enemyArrow' | 'firebomb' | 'shockwave';
+  x: number;
   y: number;
+  z: number; // 높이 (렌더용 포물선, 돌은 착지 판정에 사용)
   vx: number;
   vy: number;
+  vz: number;
+  gz: number; // 높이 방향 중력
   r: number;
   dmg: number;
   crit: boolean;
   life: number;
-  grav: number;
   aoe: number;
   pierce: boolean;
   hitIds: number[]; // 관통 투사체가 이미 맞힌 적
@@ -106,11 +146,29 @@ export interface Projectile {
 
 export interface Drop {
   id: number;
-  kind: 'item' | 'potion';
+  kind: 'item' | 'hpFood' | 'mpFood' | 'gold'; // 장비 / HP 회복 음식 / MP 회복 음식 / 돈
   item?: Item;
-  x: number; // 중심 x, 바닥 y
+  gold?: number;
+  x: number;
   y: number;
-  vy: number;
+  z: number;
+  vz: number;
+}
+
+/** 상점 진열대 한 칸. 음식은 무제한, 장비는 하나뿐이라 누가 사면 품절 */
+export interface ShopEntry {
+  kind: 'hpFood' | 'mpFood' | 'item';
+  price: number;
+  item?: Item;
+  sold: boolean;
+}
+
+export interface Shop {
+  id: number;
+  x: number; // 상인이 서 있는 곳 (월드 좌표)
+  y: number;
+  zone: number;
+  stock: ShopEntry[];
 }
 
 export type GameEvent =
@@ -122,20 +180,28 @@ export type GameEvent =
   | { t: 'down'; pid: string }
   | { t: 'revive'; pid: string }
   | { t: 'banner'; text: string; sub?: string }
-  | { t: 'skill'; pid: string; x: number; y: number; r: number };
+  | { t: 'skill'; pid: string; idx: number; x: number; y: number; r: number }
+  | { t: 'unlock'; pid: string; idx: number }
+  | { t: 'nomp'; pid: string }
+  | { t: 'mana'; x: number; y: number; v: number }
+  | { t: 'gold'; pid: string; x: number; y: number; v: number }
+  | { t: 'bought'; pid: string; entry: ShopEntry }
+  | { t: 'notice'; pid: string; text: string } // 그 플레이어에게만 보이는 짧은 안내 (품절, 상자 가득 등)
+  | { t: 'stash'; pid: string; kind: FoodKind }
+  | { t: 'swing'; x: number; y: number; aim: number; range: number; arc: number; enemy: boolean };
 
 export type GameStatus = 'playing' | 'victory' | 'defeat';
 
-/** 네트워크로 전송되고 렌더러가 그리는 상태. 화면 근처의 엔티티만 담는다. */
+/** 네트워크로 전송되고 렌더러가 그리는 상태. 플레이어들 근처의 엔티티만 담는다. */
 export interface Snapshot {
   tick: number;
-  camX: number;
   zone: number;
   status: GameStatus;
   players: Player[];
   enemies: Enemy[];
   projectiles: Projectile[];
   drops: Drop[];
+  shops: Shop[];
   events: GameEvent[];
   boss: { hp: number; maxHp: number } | null;
 }

@@ -1,32 +1,36 @@
 // 게임 시뮬레이션. 호스트에서만 실행되고, 클라이언트는 스냅샷을 받아 그리기만 한다.
 import {
-  type AttackDef, CLASSES, ENEMIES, GRAVITY, REVIVE_TIME, SKILL, TILE, VIEW_W, ZONE_NAMES,
-  makeItem, partyHpScale, xpForLevel, zoneScale,
+  AGGRO_RANGE, ATTR_EFFECT, ATTR_KEYS, CLASSES, ELITE, ELITES, ENEMIES, FOOD, INV_SIZE, POINTS_PER_LEVEL, REVIVE_TIME, SHOP, SKILL, TILE, ZONE_NAMES,
+  deriveStats, makeItem, partyHpScale, type EliteDef, shopItemPrice, totalAttrs, xpForLevel, zoneScale, type AttackDef,
 } from './data';
-import { buildLevel, mulberry32, T_SOLID, tileAt, type Level } from './level';
-import { approach, moveBody, rectsOverlap, unstick } from './physics';
+import { buildLevel, mulberry32, zoneOfTx, type Level } from './level';
+import { NavField, angleDiff, approach, dist, lineOfSight, moveBody, pointBlocked } from './physics';
 import {
   EMPTY_INPUT,
-  type Drop, type Enemy, type EnemyKind, type GameEvent, type GameStatus, type InputState,
-  type LobbyPlayer, type Player, type Projectile, type Snapshot,
+  type AttrKey, type Drop, type FoodKind, type Item, type Enemy, type EnemyKind, type GameEvent, type GameStatus, type InputState,
+  type LobbyPlayer, type Player, type Projectile, type Shop, type Snapshot,
 } from './types';
 
 type ProjectileAttack = Extract<AttackDef, { kind: 'projectile' }>;
+
+const NAV_EVERY = 15; // 길찾기 지도 갱신 주기 (틱)
+const SNAPSHOT_RADIUS = 650; // 플레이어로부터 이 거리 안의 엔티티만 전송
 
 export class Sim {
   readonly level: Level;
   private rng: () => number;
   tick = 0;
-  camX = 0;
   zone = 0;
   status: GameStatus = 'playing';
   players: Player[] = [];
   enemies: Enemy[] = [];
   projectiles: Projectile[] = [];
   drops: Drop[] = [];
+  shops: Shop[] = [];
   private events: GameEvent[] = [];
   private inputs = new Map<string, InputState>();
   private prevInputs = new Map<string, InputState>();
+  private navs = new Map<string, NavField>();
   private nextId = 1;
   private arenaLocked = false;
   private endTimer = 0;
@@ -38,11 +42,22 @@ export class Sim {
     lobby.forEach((lp, i) => this.players.push(this.createPlayer(lp, i)));
     const party = partyHpScale(this.players.length);
     for (const s of this.level.spawns) {
-      const e = this.createEnemy(s.kind, s.zone, party);
-      e.x = s.tx * TILE + (TILE - e.w) / 2;
-      e.y = s.ty * TILE - e.h;
+      const e = this.createEnemy(s.kind, s.zone, party, s.elite === undefined ? undefined : ELITES[s.zone - 1][s.elite]);
+      e.x = s.x;
+      e.y = s.y;
       this.enemies.push(e);
     }
+    this.shops = this.level.shops.map((sp, i) => ({
+      id: i, x: sp.x, y: sp.y, zone: sp.zone,
+      stock: [
+        { kind: 'hpFood' as const, price: SHOP.foodPrice, sold: false },
+        { kind: 'mpFood' as const, price: SHOP.foodPrice, sold: false },
+        ...Array.from({ length: SHOP.items }, () => {
+          const item = makeItem(this.nextId++, sp.zone, this.rng, SHOP.rarityWeight);
+          return { kind: 'item' as const, item, price: shopItemPrice(item.rarity, sp.zone), sold: false };
+        }),
+      ],
+    }));
   }
 
   setInput(id: string, input: InputState) {
@@ -52,6 +67,7 @@ export class Sim {
   removePlayer(id: string) {
     this.players = this.players.filter((p) => p.id !== id);
     this.inputs.delete(id);
+    this.navs.delete(id);
   }
 
   drainEvents(): GameEvent[] {
@@ -64,50 +80,62 @@ export class Sim {
 
   private createPlayer(lp: LobbyPlayer, index: number): Player {
     const def = CLASSES[lp.cls!];
+    const ang = (index / 4) * Math.PI * 2;
     const p: Player = {
       id: lp.id, name: lp.name, cls: lp.cls!,
-      x: 80 + index * 44, y: 14 * TILE - def.h, vx: 0, vy: 0, w: def.w, h: def.h, onGround: false,
-      facing: 1, hp: 0, level: 1, xp: 0, xpNext: xpForLevel(1),
-      stats: { ...def.base }, equip: {},
-      atkCd: 0, atkAnim: 0, skillCd: 0, dashTime: 0, dashHits: [], guard: 0,
+      x: this.level.start.x + Math.cos(ang) * 24, y: this.level.start.y + Math.sin(ang) * 24,
+      vx: 0, vy: 0, r: def.r, aim: 0, moving: false,
+      hp: 0, level: 1, xp: 0, xpNext: xpForLevel(1),
+      attrs: { ...def.attrs }, alloc: { str: 0, dex: 0, int: 0, vit: 0 }, points: 0,
+      gold: 0,
+      // 음식 먹는 법을 익히도록 HP·MP 음식을 하나씩 넣어 준다
+      inv: [{ kind: 'hpFood', count: 1 }, { kind: 'mpFood', count: 1 }, ...Array<null>(INV_SIZE - 2).fill(null)],
+      stats: { maxHp: 0, atk: 0, def: 0, crit: 0, haste: 0, cdr: 0, maxMp: 0, mpRegen: 0 },
+      atkCd: 0, atkAnim: 0, skillCds: [0, 0, 0, 0], dashTime: 0, dashSkill: 0, dashHits: [],
+      guard: 0, guardReduce: 0, atkBuff: 0, mp: 0,
       invuln: 0, dead: false, revive: 0, kills: 0,
     };
     this.recalcStats(p);
     p.hp = p.stats.maxHp;
+    p.mp = p.stats.maxMp;
     return p;
   }
 
-  private createEnemy(kind: EnemyKind, zone: number, party: number): Enemy {
+  /** elite를 주면 그 능력치로 중간보스를 만든다 (ELITES) */
+  private createEnemy(kind: EnemyKind, zone: number, party: number, elite?: EliteDef): Enemy {
     const def = ENEMIES[kind];
     const zs = kind === 'boss' ? zoneScale(1) : zoneScale(zone);
-    const hp = Math.round(def.hp * zs.hp * party);
+    const base = elite ?? def;
+    const hp = Math.round(base.hp * zs.hp * party);
     return {
-      id: this.nextId++, kind, zone, active: false,
-      x: 0, y: 0, vx: 0, vy: 0, w: def.w, h: def.h, onGround: false, facing: -1,
-      hp, maxHp: hp, atk: Math.round(def.atk * zs.atk), def: def.def + zs.def, xp: Math.round(def.xp * zs.xp),
-      hurt: 0, stun: 0, taunt: 0, tauntBy: '', timer: 1 + this.rng(), state: 'move', stateTime: 0,
+      id: this.nextId++, kind, zone, elite: elite?.name ?? null, active: false,
+      // 몸집이 커져도 타일 한 칸 틈은 지나가야 하므로 충돌 반지름은 15까지만
+      x: 0, y: 0, vx: 0, vy: 0, r: elite ? Math.min(15, def.r * 1.25) : def.r, aim: Math.PI,
+      hp, maxHp: hp, atk: Math.round(base.atk * zs.atk), def: base.def + zs.def,
+      xp: Math.round(def.xp * zs.xp * (elite ? ELITE.xp : 1)),
+      hurt: 0, stun: 0, slow: 0, taunt: 0, tauntBy: '', timer: 1 + this.rng(), state: 'move', stateTime: 0,
+      z: 0, tx: 0, ty: 0,
     };
   }
 
   private recalcStats(p: Player) {
-    const def = CLASSES[p.cls];
-    const lv = p.level - 1;
-    const s = {
-      maxHp: def.base.maxHp + def.growth.maxHp * lv,
-      atk: def.base.atk + def.growth.atk * lv,
-      def: def.base.def + def.growth.def * lv,
-      crit: def.base.crit + def.growth.crit * lv,
-    };
-    for (const item of Object.values(p.equip)) {
-      if (!item) continue;
-      s.maxHp += item.stats.maxHp ?? 0;
-      s.atk += item.stats.atk ?? 0;
-      s.def += item.stats.def ?? 0;
-      s.crit += item.stats.crit ?? 0;
-    }
+    // 상자에 든 장비는 종류와 상관없이 모두 능력치에 더해진다
+    const items = p.inv.flatMap((sl) => (sl?.kind === 'item' ? [sl.item] : []));
+    p.attrs = totalAttrs(p.cls, p.level, p.alloc, items);
     const oldMax = p.stats.maxHp;
-    p.stats = { maxHp: Math.round(s.maxHp), atk: Math.round(s.atk), def: Math.round(s.def), crit: Math.min(0.75, s.crit) };
+    p.stats = deriveStats(p.cls, p.level, p.attrs, items);
+    // 최대 HP가 늘면 늘어난 만큼 현재 HP도 채운다
     if (p.hp > 0) p.hp = Math.min(p.stats.maxHp, p.hp + Math.max(0, p.stats.maxHp - oldMax));
+    p.mp = Math.min(p.mp, p.stats.maxMp);
+  }
+
+  /** 레벨업 포인트를 능력치 하나에 1 배분한다. */
+  allocate(id: string, attr: AttrKey) {
+    const p = this.playerById(id);
+    if (!p || p.points <= 0 || !ATTR_KEYS.includes(attr)) return;
+    p.points--;
+    p.alloc[attr]++;
+    this.recalcStats(p);
   }
 
   // ─── 메인 루프 ──────────────────────────────────────
@@ -121,18 +149,24 @@ export class Sim {
       if (this.endTimer <= 0) this.status = this.pendingStatus;
     }
 
+    if (this.tick % NAV_EVERY === 1) this.updateNav();
     for (const p of this.players) this.updatePlayer(p, dt);
-    this.updateCamera(dt);
     this.updateZone();
 
     for (const e of this.enemies) {
       if (!e.active) {
-        if (e.kind === 'boss' ? this.arenaLocked : e.x < this.camX + VIEW_W + 64) e.active = true;
-        else continue;
+        const wake = e.kind === 'boss'
+          ? this.arenaLocked
+          // 벽 너머(옆 통로)에 있는 플레이어는 알아차리지 못한다
+          : this.players.some((p) => !p.dead && dist(p.x, p.y, e.x, e.y) < AGGRO_RANGE && lineOfSight(this.level, e.x, e.y, p.x, p.y));
+        if (!wake) continue;
+        e.active = true;
+        if (e.elite) this.events.push({ t: 'banner', text: '', sub: `⚔ ${e.elite} 등장!` });
       }
       this.updateEnemy(e, dt);
     }
     this.enemies = this.enemies.filter((e) => e.hp > 0);
+    this.separateEnemies();
 
     this.updateProjectiles(dt);
     this.updateDrops(dt);
@@ -152,6 +186,15 @@ export class Sim {
     this.endTimer = delay;
   }
 
+  private updateNav() {
+    for (const p of this.players) {
+      if (p.dead) continue;
+      let nav = this.navs.get(p.id);
+      if (!nav) this.navs.set(p.id, (nav = new NavField(this.level)));
+      nav.compute(p.x, p.y);
+    }
+  }
+
   // ─── 플레이어 ───────────────────────────────────────
 
   private updatePlayer(p: Player, dt: number) {
@@ -160,38 +203,51 @@ export class Sim {
     const def = CLASSES[p.cls];
     p.atkCd -= dt;
     p.atkAnim -= dt;
-    p.skillCd -= dt;
+    for (let i = 0; i < p.skillCds.length; i++) p.skillCds[i] -= dt;
     p.guard -= dt;
+    p.atkBuff -= dt;
     p.invuln -= dt;
 
     if (p.dead) {
-      p.vx = approach(p.vx, 0, 1200 * dt);
-      p.vy += GRAVITY * dt;
-      moveBody(this.level, p, dt);
+      p.vx = p.vy = 0;
+      p.moving = false;
       return;
     }
+    p.mp = Math.min(p.stats.maxMp, p.mp + p.stats.mpRegen * dt);
+    if (Number.isFinite(inp.aim)) p.aim = inp.aim;
 
     if (p.dashTime > 0) {
       this.updateDash(p, dt);
       return;
     }
 
-    const dir = (inp.right ? 1 : 0) - (inp.left ? 1 : 0);
-    if (dir !== 0) p.facing = dir as 1 | -1;
-    p.vx = approach(p.vx, dir * def.speed, (p.onGround ? 2400 : 1400) * dt);
-
-    if (inp.jump && !prev.jump && p.onGround) p.vy = -def.jump;
-    // 점프 키를 일찍 떼면 낮게 뛴다
-    p.vy += GRAVITY * dt * (p.vy < 0 && !inp.jump ? 2 : 1);
+    let mx = Number.isFinite(inp.mx) ? inp.mx : 0;
+    let my = Number.isFinite(inp.my) ? inp.my : 0;
+    const len = Math.hypot(mx, my);
+    if (len > 1) {
+      mx /= len;
+      my /= len;
+    }
+    const accel = 1800 * dt;
+    p.vx = approach(p.vx, mx * def.speed, accel);
+    p.vy = approach(p.vy, my * def.speed, accel);
+    p.moving = len > 0.1;
     moveBody(this.level, p, dt);
 
-    if (inp.skill && !prev.skill && p.skillCd <= 0) this.useSkill(p);
+    // 새로 누른 스킬 키 (여러 개면 번호가 작은 것 하나만)
+    const pressed = (inp.skills | 0) & ~(prev.skills | 0);
+    const idx = [0, 1, 2, 3].find((i) => pressed & (1 << i));
+    if (idx !== undefined) this.tryUseSkill(p, idx);
     else if (inp.attack && p.atkCd <= 0) this.playerAttack(p);
-    if (inp.down && !prev.down) this.tryPickup(p);
+    if (inp.pickup && !prev.pickup) this.tryPickup(p);
+    const used = (inp.use | 0) & ~(prev.use | 0);
+    if (used & 1) this.eatFromInv(p, 'hpFood');
+    if (used & 2) this.eatFromInv(p, 'mpFood');
   }
 
   private rollDamage(p: Player, mult: number) {
     let v = p.stats.atk * mult * (0.9 + this.rng() * 0.2);
+    if (p.atkBuff > 0) v *= 1 + SKILL.warcry.atk;
     const crit = this.rng() < p.stats.crit;
     if (crit) v *= 1.6;
     return { v, crit };
@@ -199,147 +255,392 @@ export class Sim {
 
   private playerAttack(p: Player) {
     const a = CLASSES[p.cls].attack;
-    p.atkCd = a.cd;
+    p.atkCd = a.cd / (1 + p.stats.haste);
     p.atkAnim = 0.18;
-    const cx = p.x + p.w / 2;
 
     if (a.kind === 'melee') {
-      const hx = p.facing > 0 ? cx : cx - a.range;
-      const hy = p.y + p.h / 2 - a.height / 2;
-      for (const e of this.enemies) {
-        if (!e.active || e.hp <= 0) continue;
-        if (rectsOverlap(hx, hy, a.range, a.height, e.x, e.y, e.w, e.h)) {
-          const d = this.rollDamage(p, a.mult);
-          this.hitEnemy(e, d.v, d.crit, p.facing * a.knock, p);
-        }
-      }
+      this.meleeArc(p, a.range, a.arc, a.mult, a.knock, 0);
     } else {
       const d = this.rollDamage(p, a.mult);
-      const sx = cx + p.facing * p.w / 2, sy = p.y + p.h * 0.4;
-      this.projectiles.push({
-        id: this.nextId++, fromPlayer: true, ownerId: p.id, kind: a.proj,
-        x: sx, y: sy,
-        vx: p.facing * a.speed, vy: -this.aimLift(p, a, sx, sy), r: a.proj === 'orb' ? 9 : 5,
-        dmg: d.v, crit: d.crit, life: 1.2, grav: a.grav, aoe: a.aoe, pierce: false, hitIds: [],
-      });
+      this.projectiles.push(this.playerProjectile(p, {
+        kind: a.proj, ang: p.aim, speed: a.speed, range: a.range, arcHeight: a.arcHeight,
+        r: a.proj === 'orb' ? 9 : 6, aoe: a.aoe, dmg: d.v, crit: d.crit, pierce: false,
+      }));
     }
+  }
+
+  /** 플레이어 앞(또는 주변) 부채꼴 안의 적을 친다. arc가 π 이상이면 360도. */
+  private meleeArc(p: Player, range: number, arc: number, mult: number, knock: number, stun: number) {
+    this.events.push({ t: 'swing', x: p.x, y: p.y, aim: p.aim, range, arc, enemy: false });
+    for (const e of this.enemies) {
+      if (!e.active || e.hp <= 0 || e.z > 30) continue;
+      const d = dist(p.x, p.y, e.x, e.y);
+      const ang = Math.atan2(e.y - p.y, e.x - p.x);
+      const inArc = arc >= Math.PI || Math.abs(angleDiff(ang, p.aim)) <= arc;
+      if (d - e.r <= range && (inArc || d < p.r + e.r + 4)) {
+        const dmg = this.rollDamage(p, mult);
+        this.hitEnemy(e, dmg.v, dmg.crit, Math.cos(ang) * knock, Math.sin(ang) * knock, p, stun);
+      }
+    }
+  }
+
+  private playerProjectile(p: Player, o: {
+    kind: Projectile['kind']; ang: number; speed: number; range: number; arcHeight: number;
+    r: number; aoe: number; dmg: number; crit: boolean; pierce: boolean;
+  }): Projectile {
+    const life = o.range / o.speed;
+    // 포물선: 0에서 출발해 arcHeight까지 올랐다가 비행이 끝날 때 다시 0
+    const vz = (4 * o.arcHeight) / life;
+    const gz = (8 * o.arcHeight) / (life * life);
+    return {
+      id: this.nextId++, fromPlayer: true, ownerId: p.id, kind: o.kind,
+      x: p.x + Math.cos(o.ang) * p.r, y: p.y + Math.sin(o.ang) * p.r, z: 0,
+      vx: Math.cos(o.ang) * o.speed, vy: Math.sin(o.ang) * o.speed, vz, gz,
+      r: o.r, dmg: o.dmg, crit: o.crit, life, aoe: o.aoe, pierce: o.pierce, hitIds: [],
+    };
+  }
+
+  /** 하늘에서 (x, y)로 떨어지는 투사체. 땅에 닿을 때 aoe 범위에 피해를 준다. */
+  private fallingProjectile(p: Player, kind: 'rain' | 'meteor', x: number, y: number, height: number, fall: number, aoe: number, mult: number): Projectile {
+    const d = this.rollDamage(p, mult);
+    return {
+      id: this.nextId++, fromPlayer: true, ownerId: p.id, kind, x, y, z: height,
+      vx: 0, vy: 0, vz: 0, gz: (2 * height) / (fall * fall),
+      r: kind === 'meteor' ? 30 : 4, dmg: d.v, crit: d.crit, life: fall, aoe, pierce: false, hitIds: [],
+    };
+  }
+
+  /** 조준 방향으로 distance만큼 앞의 지점. 벽 너머면 벽 앞에서 멈춘다. */
+  private aimPoint(p: Player, distance: number) {
+    let x = p.x, y = p.y;
+    for (let d = 16; d <= distance; d += 16) {
+      const nx = p.x + Math.cos(p.aim) * d, ny = p.y + Math.sin(p.aim) * d;
+      if (pointBlocked(this.level, nx, ny)) break;
+      x = nx;
+      y = ny;
+    }
+    return { x, y };
   }
 
   // ─── 스킬 ─────────────────────────────────────────
 
-  private useSkill(p: Player) {
-    p.skillCd = CLASSES[p.cls].skill.cd;
-    const cx = p.x + p.w / 2, cy = p.y + p.h / 2;
-    switch (p.cls) {
-      case 'swordsman':
-        p.dashTime = SKILL.dash.time;
-        p.dashHits = [];
-        p.invuln = Math.max(p.invuln, SKILL.dash.time + 0.15);
-        p.atkAnim = SKILL.dash.time;
-        this.events.push({ t: 'skill', pid: p.id, x: cx, y: cy, r: 0 });
-        break;
+  private tryUseSkill(p: Player, idx: number) {
+    const sk = CLASSES[p.cls].skills[idx];
+    if (!sk || p.level < sk.unlock || p.skillCds[idx] > 0) return;
+    if (p.mp < sk.mp) {
+      this.events.push({ t: 'nomp', pid: p.id });
+      return;
+    }
+    p.mp -= sk.mp;
+    p.skillCds[idx] = sk.cd / (1 + p.stats.cdr);
+    this.useSkill(p, idx);
+  }
 
-      case 'dwarf': {
-        const { radius, time, guard } = SKILL.taunt;
-        p.guard = guard;
+  private useSkill(p: Player, idx: number) {
+    const ev = (r: number, x = p.x, y = p.y) => this.events.push({ t: 'skill', pid: p.id, idx, x, y, r });
+    const elfArrow = CLASSES.elf.attack as ProjectileAttack;
+    switch (`${p.cls}.${idx}`) {
+      // ── 검사 ──
+      case 'swordsman.0':
+        this.startDash(p, 0, SKILL.dash.time);
+        ev(0);
+        break;
+      case 'swordsman.1':
+        p.atkAnim = 0.3;
+        this.meleeArc(p, SKILL.whirl.radius, Math.PI, SKILL.whirl.mult, 240, 0);
+        ev(0);
+        break;
+      case 'swordsman.2':
+        for (const o of this.players) {
+          if (!o.dead && dist(p.x, p.y, o.x, o.y) <= SKILL.warcry.radius) o.atkBuff = SKILL.warcry.time;
+        }
+        ev(SKILL.warcry.radius);
+        break;
+      case 'swordsman.3': {
+        const w = SKILL.wave;
+        const d = this.rollDamage(p, w.mult);
+        p.atkAnim = 0.3;
+        this.projectiles.push(this.playerProjectile(p, {
+          kind: 'wave', ang: p.aim, speed: w.speed, range: w.range, arcHeight: 0,
+          r: w.r, aoe: 0, dmg: d.v, crit: d.crit, pierce: true,
+        }));
+        ev(0);
+        break;
+      }
+
+      // ── 수호자 ──
+      case 'dwarf.0': {
+        const { radius, time, guard, reduce } = SKILL.taunt;
+        this.setGuard(p, guard, reduce);
         for (const e of this.enemies) {
           if (!e.active || e.hp <= 0) continue;
-          if (Math.hypot(e.x + e.w / 2 - cx, e.y + e.h / 2 - cy) <= radius) {
+          if (dist(p.x, p.y, e.x, e.y) <= radius) {
             e.taunt = e.kind === 'boss' ? time / 2 : time;
             e.tauntBy = p.id;
           }
         }
-        this.events.push({ t: 'skill', pid: p.id, x: cx, y: cy, r: radius });
+        ev(radius);
+        break;
+      }
+      case 'dwarf.1':
+        p.atkAnim = 0.3;
+        this.meleeArc(p, SKILL.slam.radius, Math.PI, SKILL.slam.mult, 160, SKILL.slam.stun);
+        this.events.push({ t: 'boom', x: p.x, y: p.y, r: SKILL.slam.radius });
+        ev(0);
+        break;
+      case 'dwarf.2':
+        this.startDash(p, 2, SKILL.bash.time);
+        ev(0);
+        break;
+      case 'dwarf.3': {
+        const b = SKILL.bastion;
+        for (const o of this.players) {
+          if (o.dead || dist(p.x, p.y, o.x, o.y) > b.radius) continue;
+          this.setGuard(o, b.time, b.reduce);
+          this.healPlayer(o, Math.round(o.stats.maxHp * b.heal));
+        }
+        ev(b.radius);
         break;
       }
 
-      case 'elf': {
+      // ── 궁수 ──
+      case 'elf.0': {
         const { arrows, spread, mult } = SKILL.volley;
-        const a = CLASSES.elf.attack as ProjectileAttack;
-        const { speed, grav } = a;
-        const sx = cx + p.facing * p.w / 2, sy = p.y + p.h * 0.4;
-        const lift = this.aimLift(p, a, sx, sy);
         p.atkAnim = 0.25;
         for (let i = 0; i < arrows; i++) {
-          const ang = -spread / 2 + (spread * i) / (arrows - 1);
           const d = this.rollDamage(p, mult);
-          this.projectiles.push({
-            id: this.nextId++, fromPlayer: true, ownerId: p.id, kind: 'arrow',
-            x: sx, y: sy,
-            vx: Math.cos(ang) * speed * p.facing, vy: Math.sin(ang) * speed - lift, r: 6,
-            dmg: d.v, crit: d.crit, life: 1.2, grav, aoe: 0, pierce: true, hitIds: [],
-          });
+          this.projectiles.push(this.playerProjectile(p, {
+            kind: 'arrow', ang: p.aim - spread / 2 + (spread * i) / (arrows - 1), speed: elfArrow.speed,
+            range: elfArrow.range, arcHeight: elfArrow.arcHeight, r: 6, aoe: 0, dmg: d.v, crit: d.crit, pierce: true,
+          }));
         }
-        this.events.push({ t: 'skill', pid: p.id, x: cx, y: cy, r: 0 });
+        ev(0);
+        break;
+      }
+      case 'elf.1': {
+        const sn = SKILL.snipe;
+        const d = this.rollDamage(p, sn.mult);
+        p.atkAnim = 0.25;
+        this.projectiles.push(this.playerProjectile(p, {
+          kind: 'arrow', ang: p.aim, speed: sn.speed, range: sn.range, arcHeight: 30,
+          r: 9, aoe: 0, dmg: d.v, crit: d.crit, pierce: true,
+        }));
+        ev(0);
+        break;
+      }
+      case 'elf.2': {
+        const rn = SKILL.rain;
+        const c = this.aimPoint(p, rn.distance);
+        p.atkAnim = 0.3;
+        for (let i = 0; i < rn.arrows; i++) {
+          const a = this.rng() * Math.PI * 2, r = Math.sqrt(this.rng()) * rn.radius;
+          // 높이를 다르게 해서 0.5~1.5초에 걸쳐 차례로 떨어지게 한다
+          const fall = 0.5 + (i / rn.arrows) * 1.0;
+          this.projectiles.push(this.fallingProjectile(p, 'rain', c.x + Math.cos(a) * r, c.y + Math.sin(a) * r, 260, fall, rn.aoe, rn.mult));
+        }
+        ev(rn.radius, c.x, c.y);
+        break;
+      }
+      case 'elf.3': {
+        const st = SKILL.storm;
+        p.atkAnim = 0.3;
+        for (let i = 0; i < st.arrows; i++) {
+          const d = this.rollDamage(p, st.mult);
+          this.projectiles.push(this.playerProjectile(p, {
+            kind: 'arrow', ang: p.aim + (i / st.arrows) * Math.PI * 2, speed: elfArrow.speed,
+            range: elfArrow.range, arcHeight: elfArrow.arcHeight, r: 7, aoe: 0, dmg: d.v, crit: d.crit, pierce: true,
+          }));
+        }
+        ev(0);
         break;
       }
 
-      case 'gnome': {
-        const { radius, ratio } = SKILL.heal;
+      // ── 마법사 ──
+      case 'gnome.0': {
+        const { radius } = SKILL.heal;
+        const ratio = SKILL.heal.ratio * (1 + p.attrs.int * ATTR_EFFECT.intHeal);
         for (const o of this.players) {
-          if (Math.hypot(o.x + o.w / 2 - cx, o.y + o.h / 2 - cy) > radius) continue;
+          if (dist(p.x, p.y, o.x, o.y) > radius) continue;
           if (o.dead) this.revivePlayer(o, ratio);
           else this.healPlayer(o, Math.round(o.stats.maxHp * ratio));
         }
         p.atkAnim = 0.3;
-        this.events.push({ t: 'skill', pid: p.id, x: cx, y: cy, r: radius });
+        ev(radius);
+        break;
+      }
+      case 'gnome.1': {
+        const f = SKILL.frost;
+        p.atkAnim = 0.3;
+        for (const e of this.enemies) {
+          if (!e.active || e.hp <= 0 || dist(p.x, p.y, e.x, e.y) - e.r > f.radius) continue;
+          const d = this.rollDamage(p, f.mult);
+          e.slow = e.kind === 'boss' ? f.slow / 2 : f.slow;
+          this.hitEnemy(e, d.v, d.crit, 0, 0, p);
+        }
+        ev(f.radius);
+        break;
+      }
+      case 'gnome.2': {
+        const fb = SKILL.fireball;
+        const d = this.rollDamage(p, fb.mult);
+        p.atkAnim = 0.3;
+        this.projectiles.push(this.playerProjectile(p, {
+          kind: 'fireball', ang: p.aim, speed: fb.speed, range: fb.range, arcHeight: 0,
+          r: 14, aoe: fb.aoe, dmg: d.v, crit: d.crit, pierce: false,
+        }));
+        ev(0);
+        break;
+      }
+      case 'gnome.3': {
+        const m = SKILL.meteor;
+        const c = this.aimPoint(p, m.distance);
+        p.atkAnim = 0.4;
+        this.projectiles.push(this.fallingProjectile(p, 'meteor', c.x, c.y, 600, m.fall, m.aoe, m.mult));
+        ev(0, c.x, c.y);
         break;
       }
     }
   }
 
-  /** 검사 돌진: 중력 없이 앞으로 미끄러지며 닿는 적을 한 번씩 벤다. */
+  private setGuard(p: Player, time: number, reduce: number) {
+    // 더 강한 보호가 이미 걸려 있으면 약한 것으로 덮지 않는다
+    if (p.guard > 0 && p.guardReduce > reduce) {
+      p.guard = Math.max(p.guard, time);
+      return;
+    }
+    p.guard = time;
+    p.guardReduce = reduce;
+  }
+
+  private startDash(p: Player, skillIdx: number, time: number) {
+    p.dashTime = time;
+    p.dashSkill = skillIdx;
+    p.dashHits = [];
+    p.invuln = Math.max(p.invuln, time + 0.15);
+    p.atkAnim = time;
+  }
+
+  /** 돌진(돌진 베기·방패 돌진): 조준 방향으로 미끄러지며 닿는 적을 한 번씩 친다. */
   private updateDash(p: Player, dt: number) {
+    const shield = p.cls === 'dwarf';
+    const speed = shield ? SKILL.bash.speed : SKILL.dash.speed;
     p.dashTime -= dt;
-    p.vx = p.facing * SKILL.dash.speed;
-    p.vy = 0;
+    p.vx = Math.cos(p.aim) * speed;
+    p.vy = Math.sin(p.aim) * speed;
+    p.moving = true;
     moveBody(this.level, p, dt);
     for (const e of this.enemies) {
       if (!e.active || e.hp <= 0 || p.dashHits.includes(e.id)) continue;
-      if (rectsOverlap(p.x - 10, p.y, p.w + 20, p.h, e.x, e.y, e.w, e.h)) {
+      if (dist(p.x, p.y, e.x, e.y) < p.r + e.r + 14) {
         p.dashHits.push(e.id);
-        const d = this.rollDamage(p, SKILL.dash.mult);
-        this.hitEnemy(e, d.v, d.crit, p.facing * 260, p);
+        const d = this.rollDamage(p, shield ? SKILL.bash.mult : SKILL.dash.mult);
+        const knock = shield ? SKILL.bash.knock : 260;
+        this.hitEnemy(e, d.v, d.crit, Math.cos(p.aim) * knock, Math.sin(p.aim) * knock, p, shield ? SKILL.bash.stun : 0);
       }
     }
-    if (p.dashTime <= 0) p.vx = p.facing * CLASSES[p.cls].speed;
+    if (p.dashTime <= 0) {
+      p.vx *= 0.2;
+      p.vy *= 0.2;
+    }
   }
 
-  /**
-   * 포물선 투사체의 위쪽 초속을 구한다. 앞쪽 가장 가까운 적의 중심에 떨어지도록 계산하므로
-   * 가까운 적에게는 거의 직선으로, 먼 적에게는 높게 휘어 날아간다.
-   */
-  private aimLift(p: Player, a: ProjectileAttack, sx: number, sy: number): number {
-    if (a.grav <= 0) return a.lift;
-    let best: Enemy | null = null;
-    let bestDx = a.aimRange;
-    for (const e of this.enemies) {
-      if (!e.active || e.hp <= 0) continue;
-      const dx = (e.x + e.w / 2 - sx) * p.facing;
-      if (dx > 0 && dx < bestDx && Math.abs(e.y + e.h / 2 - sy) < 260) {
-        bestDx = dx;
-        best = e;
-      }
-    }
-    if (!best) return a.lift;
-    const t = bestDx / a.speed;
-    const dy = best.y + best.h / 2 - sy; // 아래가 +
-    const lift = ((a.grav * t * t) / 2 - dy) / t;
-    return Math.max(-200, Math.min(600, lift));
+  private notice(p: Player, text: string) {
+    this.events.push({ t: 'notice', pid: p.id, text });
   }
 
   private tryPickup(p: Player) {
-    const cx = p.x + p.w / 2;
-    const feet = p.y + p.h;
-    const drop = this.drops.find((d) => d.kind === 'item' && Math.abs(d.x - cx) < 32 && Math.abs(d.y - feet) < 48);
+    const drop = this.drops.find((d) => d.kind === 'item' && dist(d.x, d.y, p.x, p.y) < 36);
     if (!drop || !drop.item) return;
-    const item = drop.item;
-    const old = p.equip[item.slot];
-    p.equip[item.slot] = item;
+    if (!this.addItem(p, drop.item)) return this.notice(p, '아이템 상자가 가득 찼어요');
+    this.drops = this.drops.filter((d) => d !== drop);
+  }
+
+  // ─── 아이템 상자 ─────────────────────────────────────
+
+  /** 장비를 빈 칸에 넣는다. 자리가 없으면 false. */
+  private addItem(p: Player, item: Item): boolean {
+    const free = p.inv.indexOf(null);
+    if (free < 0) return false;
+    p.inv[free] = { kind: 'item', item };
     this.recalcStats(p);
     this.events.push({ t: 'equip', pid: p.id, item });
-    this.drops = this.drops.filter((d) => d !== drop);
-    if (old) this.drops.push({ id: this.nextId++, kind: 'item', item: old, x: cx, y: feet - 4, vy: -250 });
+    return true;
+  }
+
+  /** 음식 n개를 같은 종류 묶음에 더하거나 빈 칸에 새로 넣는다. 최대 개수나 자리가 없으면 false. */
+  private addFood(p: Player, kind: FoodKind, n = 1): boolean {
+    const stack = p.inv.find((sl) => sl?.kind === kind) as { kind: FoodKind; count: number } | undefined;
+    if (stack) {
+      if (stack.count + n > FOOD.stackMax) return false;
+      stack.count += n;
+      return true;
+    }
+    const free = p.inv.indexOf(null);
+    if (free < 0) return false;
+    p.inv[free] = { kind, count: n };
+    return true;
+  }
+
+  private foodCount(p: Player, kind: FoodKind) {
+    const stack = p.inv.find((sl) => sl?.kind === kind);
+    return stack && stack.kind !== 'item' ? stack.count : 0;
+  }
+
+  /** 상자의 음식을 하나 먹는다 (Q·R 또는 칸 클릭). 이미 가득 차 있으면 먹지 않는다. */
+  private eatFromInv(p: Player, kind: FoodKind) {
+    const i = p.inv.findIndex((sl) => sl?.kind === kind);
+    const stack = p.inv[i];
+    if (!stack || stack.kind === 'item') return;
+    if (kind === 'hpFood') {
+      if (p.hp >= p.stats.maxHp) return this.notice(p, 'HP가 가득 차 있어요');
+      this.healPlayer(p, Math.round(p.stats.maxHp * FOOD.hp));
+    } else {
+      if (p.mp >= p.stats.maxMp) return this.notice(p, 'MP가 가득 차 있어요');
+      this.restoreMp(p, p.stats.maxMp * FOOD.mp);
+    }
+    if (--stack.count <= 0) p.inv[i] = null;
+  }
+
+  /** 상자 칸 클릭: 음식은 하나 먹고, 장비는 발밑에 내려놓는다 (자리를 비우려고). */
+  useSlot(id: string, idx: number) {
+    const p = this.playerById(id);
+    const sl = p?.inv[idx];
+    if (!p || p.dead || !sl) return;
+    if (sl.kind !== 'item') return this.eatFromInv(p, sl.kind);
+    p.inv[idx] = null;
+    this.recalcStats(p);
+    this.spawnDrop({ kind: 'item', item: sl.item }, p.x, p.y);
+    this.notice(p, '장비를 내려놓았어요');
+  }
+
+  // ─── 상점 ─────────────────────────────────────────
+
+  /** 상점에서 물건을 산다. 상인 가까이 있어야 하고, 산 물건은 아이템 상자에 들어간다. */
+  buy(id: string, shopId: number, idx: number) {
+    const p = this.playerById(id);
+    const shop = this.shops[shopId];
+    const entry = shop?.stock[idx];
+    if (!p || p.dead || !shop || !entry) return;
+    const fail = (text: string) => this.notice(p, text);
+    if (dist(p.x, p.y, shop.x, shop.y) > SHOP.range + 20) return fail('상인에게서 너무 멀어요');
+    if (entry.sold) return fail('품절');
+    if (p.gold < entry.price) return fail('돈이 부족해요');
+    if (entry.kind === 'item') {
+      if (!this.addItem(p, entry.item!)) return fail('아이템 상자가 가득 찼어요');
+      entry.sold = true;
+    } else if (!this.addFood(p, entry.kind)) {
+      return fail(this.foodCount(p, entry.kind) >= FOOD.stackMax ? `${FOOD.stackMax}개까지만 들 수 있어요` : '아이템 상자가 가득 찼어요');
+    }
+    p.gold -= entry.price;
+    this.events.push({ t: 'bought', pid: p.id, entry });
+  }
+
+  private spawnDrop(d: Pick<Drop, 'kind' | 'item' | 'gold'>, x: number, y: number) {
+    const ang = this.rng() * Math.PI * 2;
+    const off = 6 + this.rng() * 10;
+    let dx = x + Math.cos(ang) * off, dy = y + Math.sin(ang) * off;
+    if (pointBlocked(this.level, dx, dy)) [dx, dy] = [x, y];
+    this.drops.push({ id: this.nextId++, ...d, x: dx, y: dy, z: 0, vz: 260 });
   }
 
   private gainXp(p: Player, amount: number) {
@@ -347,23 +648,28 @@ export class Sim {
     while (p.xp >= p.xpNext) {
       p.xp -= p.xpNext;
       p.level++;
+      p.points += POINTS_PER_LEVEL;
       p.xpNext = xpForLevel(p.level);
       this.recalcStats(p);
       p.hp = Math.min(p.stats.maxHp, p.hp + Math.round(p.stats.maxHp * 0.3));
+      p.mp = Math.min(p.stats.maxMp, p.mp + p.stats.maxMp * 0.3);
       this.events.push({ t: 'levelup', pid: p.id, level: p.level });
+      const idx = CLASSES[p.cls].skills.findIndex((sk) => sk.unlock === p.level);
+      if (idx >= 0) this.events.push({ t: 'unlock', pid: p.id, idx });
     }
   }
 
-  private damagePlayer(p: Player, raw: number, dirX: number) {
+  private damagePlayer(p: Player, raw: number, fromX: number, fromY: number) {
     if (p.dead || p.invuln > 0) return;
     let scaled = raw * (0.9 + this.rng() * 0.2);
-    if (p.guard > 0) scaled *= 1 - SKILL.taunt.reduce;
+    if (p.guard > 0) scaled *= 1 - p.guardReduce;
     const dmg = Math.max(1, Math.round(scaled * 0.15), Math.round(scaled - p.stats.def * 0.5));
     p.hp -= dmg;
     p.invuln = 0.7;
-    p.vx = dirX * 260;
-    p.vy = -260;
-    this.events.push({ t: 'dmg', x: p.x + p.w / 2, y: p.y, v: dmg, crit: false, toPlayer: true });
+    const ang = Math.atan2(p.y - fromY, p.x - fromX);
+    p.vx = Math.cos(ang) * 240;
+    p.vy = Math.sin(ang) * 240;
+    this.events.push({ t: 'dmg', x: p.x, y: p.y, v: dmg, crit: false, toPlayer: true });
     if (p.hp <= 0) {
       p.hp = 0;
       p.dead = true;
@@ -375,9 +681,7 @@ export class Sim {
   private updateRevive(dt: number) {
     for (const p of this.players) {
       if (!p.dead) continue;
-      const helper = this.players.some(
-        (o) => !o.dead && Math.abs(o.x + o.w / 2 - (p.x + p.w / 2)) < 50 && Math.abs(o.y + o.h - (p.y + p.h)) < 60,
-      );
+      const helper = this.players.some((o) => !o.dead && dist(o.x, o.y, p.x, p.y) < 44);
       p.revive = helper ? p.revive + dt : Math.max(0, p.revive - dt);
       if (p.revive >= REVIVE_TIME) this.revivePlayer(p, 0.4);
     }
@@ -391,62 +695,46 @@ export class Sim {
     this.events.push({ t: 'revive', pid: p.id });
   }
 
-  // ─── 카메라 / 구역 ──────────────────────────────────
-
-  private updateCamera(dt: number) {
-    const alive = this.players.filter((p) => !p.dead);
-    const arenaX = this.level.arenaTx * TILE;
-    if (!this.arenaLocked && alive.some((p) => p.x > arenaX + 64)) {
-      this.arenaLocked = true;
-      this.events.push({ t: 'banner', text: ENEMIES.boss.name, sub: '최종 보스' });
-    }
-
-    let target = this.camX;
-    if (this.arenaLocked) target = arenaX;
-    else if (alive.length > 0) {
-      const xs = alive.map((p) => p.x + p.w / 2);
-      target = (Math.min(...xs) + Math.max(...xs)) / 2 - VIEW_W / 2;
-    }
-    target = Math.max(0, Math.min(this.level.w * TILE - VIEW_W, target));
-    this.camX += (target - this.camX) * Math.min(1, dt * 6);
-    if (this.arenaLocked && Math.abs(this.camX - target) < 1) this.camX = target;
-
-    // 공유 화면: 모든 플레이어는 카메라 안에 머문다
-    for (const p of this.players) {
-      const minX = this.camX + 2;
-      const maxX = this.camX + VIEW_W - p.w - 2;
-      if (p.x < minX || p.x > maxX) {
-        p.x = Math.max(minX, Math.min(maxX, p.x));
-        unstick(this.level, p);
-      }
-    }
-  }
-
-  private updateZone() {
-    const alive = this.players.filter((p) => !p.dead);
-    if (alive.length === 0) return;
-    const front = Math.max(...alive.map((p) => p.x));
-    let zone = 0;
-    this.level.zoneStartsTx.forEach((tx, i) => {
-      if (front >= tx * TILE) zone = i + 1;
-    });
-    if (zone === 0) zone = 1;
-    if (zone <= this.zone) return;
-    const first = this.zone === 0;
-    this.zone = zone;
-    this.events.push({ t: 'banner', text: `${zone}구역`, sub: ZONE_NAMES[zone - 1] });
-    if (first) return;
-    // 체크포인트: 쓰러진 동료 부활 + 체력 회복
-    for (const p of this.players) {
-      if (p.dead) this.revivePlayer(p, 0.5);
-      else this.healPlayer(p, Math.round(p.stats.maxHp * 0.25));
-    }
+  private restoreMp(p: Player, amount: number) {
+    const before = p.mp;
+    p.mp = Math.min(p.stats.maxMp, p.mp + amount);
+    if (p.mp - before >= 1) this.events.push({ t: 'mana', x: p.x, y: p.y, v: Math.round(p.mp - before) });
   }
 
   private healPlayer(p: Player, amount: number) {
     const before = p.hp;
     p.hp = Math.min(p.stats.maxHp, p.hp + amount);
-    if (p.hp > before) this.events.push({ t: 'heal', x: p.x + p.w / 2, y: p.y, v: p.hp - before });
+    if (p.hp > before) this.events.push({ t: 'heal', x: p.x, y: p.y, v: p.hp - before });
+  }
+
+  // ─── 구역 ─────────────────────────────────────────
+
+  private updateZone() {
+    const alive = this.players.filter((p) => !p.dead);
+    if (alive.length === 0) return;
+    const front = alive.reduce((a, b) => (b.x > a.x ? b : a));
+    const zone = zoneOfTx(this.level, Math.floor(front.x / TILE));
+
+    if (!this.arenaLocked && front.x > (this.level.arenaTx + 3) * TILE) {
+      this.arenaLocked = true;
+      this.events.push({ t: 'banner', text: ENEMIES.boss.name, sub: '최종 보스' });
+    }
+
+    if (zone <= this.zone) return;
+    const first = this.zone === 0;
+    this.zone = zone;
+    this.events.push({ t: 'banner', text: `${zone}구역`, sub: ZONE_NAMES[zone - 1] });
+    if (first) return;
+    // 체크포인트: 쓰러진 동료는 맨 앞 동료 곁에서 부활, 나머지는 체력 회복
+    for (const p of this.players) {
+      if (p.dead) {
+        p.x = front.x - Math.cos(front.aim) * 30;
+        p.y = front.y - Math.sin(front.aim) * 30;
+        if (pointBlocked(this.level, p.x, p.y)) [p.x, p.y] = [front.x, front.y];
+        this.revivePlayer(p, 0.5);
+      } else this.healPlayer(p, Math.round(p.stats.maxHp * 0.25));
+      this.restoreMp(p, p.stats.maxMp * 0.5);
+    }
   }
 
   // ─── 적 ────────────────────────────────────────────
@@ -458,30 +746,47 @@ export class Sim {
     }
     let best: Player | null = null;
     let bestD = Infinity;
-    const ex = e.x + e.w / 2;
     for (const p of this.players) {
       if (p.dead) continue;
-      const d = Math.abs(p.x + p.w / 2 - ex) * CLASSES[p.cls].aggro + Math.abs(p.y - e.y) * 0.5;
+      const d = dist(p.x, p.y, e.x, e.y) * CLASSES[p.cls].aggro;
       if (d < bestD) {
         bestD = d;
         best = p;
       }
     }
+    // 너무 멀어지면 쫓기를 포기한다 (보스는 예외)
+    if (best && e.kind !== 'boss' && dist(best.x, best.y, e.x, e.y) > AGGRO_RANGE * 2) return null;
     return best;
   }
 
-  private hitEnemy(e: Enemy, raw: number, crit: boolean, knockX: number, by: Player | null) {
+  /** 길찾기 지도를 따라 목표에게 다가간다. */
+  private chase(e: Enemy, target: Player, speed: number, stopDist: number) {
+    const d = dist(e.x, e.y, target.x, target.y);
+    if (d <= stopDist) {
+      e.vx = e.vy = 0;
+      return;
+    }
+    let dir: { x: number; y: number } | null = null;
+    if (d > TILE * 1.5) dir = this.navs.get(target.id)?.direction(e.x, e.y) ?? null;
+    if (!dir) dir = { x: (target.x - e.x) / d, y: (target.y - e.y) / d };
+    e.vx = dir.x * speed;
+    e.vy = dir.y * speed;
+  }
+
+  private hitEnemy(e: Enemy, raw: number, crit: boolean, kx: number, ky: number, by: Player | null, stun = 0) {
     if (e.hp <= 0) return;
     const dmg = Math.max(1, Math.round(raw - e.def * 0.5));
     e.hp -= dmg;
     e.hurt = 0.12;
-    this.events.push({ t: 'dmg', x: e.x + e.w / 2, y: e.y, v: dmg, crit, toPlayer: false });
+    this.events.push({ t: 'dmg', x: e.x, y: e.y, v: dmg, crit, toPlayer: false });
     if (e.kind !== 'boss') {
-      const resist = e.kind === 'orc' ? 0.35 : 1;
-      e.vx = knockX * resist;
-      if (e.onGround) e.vy = -160 * resist;
-      e.stun = e.kind === 'orc' ? 0.1 : 0.25;
-      if (e.state === 'windup' && e.kind !== 'orc') e.state = 'move';
+      const resist = e.elite ? ELITE.knockResist : e.kind === 'orc' ? 0.35 : 1;
+      e.vx = kx * resist;
+      e.vy = ky * resist;
+      // 중간보스는 기절이 절반만 걸리고, 오크처럼 맞아도 거의 멈추지 않는다
+      const heavy = e.elite || e.kind === 'orc';
+      e.stun = Math.max(e.stun, e.elite ? stun / 2 : stun, heavy ? 0.1 : 0.25);
+      if (e.state === 'windup' && (e.kind !== 'orc' || stun > 0)) e.state = 'move';
     }
     if (e.hp <= 0) this.killEnemy(e, by);
   }
@@ -490,98 +795,118 @@ export class Sim {
     if (by) by.kills++;
     for (const p of this.players) if (!p.dead) this.gainXp(p, e.xp);
 
-    const cx = e.x + e.w / 2;
-    const feet = e.y + e.h;
     if (e.kind === 'boss') {
-      this.events.push({ t: 'boom', x: cx, y: e.y + e.h / 2, r: 140, shake: true });
+      this.events.push({ t: 'boom', x: e.x, y: e.y, r: 140, shake: true });
       this.events.push({ t: 'banner', text: '승리!', sub: `${ENEMIES.boss.name}을(를) 쓰러뜨렸다` });
       this.endWith('victory', 3);
       return;
     }
+    // 돈은 항상 떨어진다 (구역이 깊을수록 많이)
+    const gold = Math.max(1, Math.round(ENEMIES[e.kind].gold * zoneScale(e.zone).xp * (0.7 + this.rng() * 0.6) * (e.elite ? ELITE.gold : 1)));
+    this.spawnDrop({ kind: 'gold', gold }, e.x, e.y);
+    if (e.elite) {
+      // 중간보스: 좋은 장비 하나와 회복 음식을 반드시 떨어뜨린다
+      this.events.push({ t: 'banner', text: '', sub: `${e.elite} 처치!` });
+      this.spawnDrop({ kind: 'item', item: makeItem(this.nextId++, e.zone, this.rng, SHOP.rarityWeight) }, e.x, e.y);
+      this.spawnDrop({ kind: this.rng() < 0.5 ? 'hpFood' : 'mpFood' }, e.x, e.y);
+      return;
+    }
     if (this.rng() < ENEMIES[e.kind].dropRate) {
-      const item = makeItem(this.nextId++, e.zone, this.rng);
-      this.drops.push({ id: this.nextId++, kind: 'item', item, x: cx, y: feet - 4, vy: -300 });
-    } else if (this.rng() < 0.1) {
-      this.drops.push({ id: this.nextId++, kind: 'potion', x: cx, y: feet - 4, vy: -300 });
+      this.spawnDrop({ kind: 'item', item: makeItem(this.nextId++, e.zone, this.rng) }, e.x, e.y);
+    } else if (this.rng() < 0.14) {
+      this.spawnDrop({ kind: this.rng() < 0.5 ? 'hpFood' : 'mpFood' }, e.x, e.y);
     }
   }
 
-  private shoot(e: Enemy, target: Player, speed: number, kind: Projectile['kind'], dmgMult: number) {
-    const sx = e.x + e.w / 2, sy = e.y + e.h * 0.35;
-    const tx = target.x + target.w / 2, ty = target.y + target.h / 2;
-    const ang = Math.atan2(ty - sy, tx - sx);
-    this.projectiles.push({
-      id: this.nextId++, fromPlayer: false, ownerId: '', kind, x: sx, y: sy,
-      vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed, r: 5,
-      dmg: e.atk * dmgMult, crit: false, life: 2, grav: 0, aoe: 0, pierce: false, hitIds: [],
-    });
+  private enemyProjectile(e: Enemy, kind: Projectile['kind'], ang: number, speed: number, life: number, dmg: number): Projectile {
+    return {
+      id: this.nextId++, fromPlayer: false, ownerId: '', kind,
+      x: e.x + Math.cos(ang) * e.r, y: e.y + Math.sin(ang) * e.r, z: 0,
+      vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed, vz: 0, gz: 0,
+      r: kind === 'shockwave' ? 14 : 6, dmg, crit: false, life, aoe: 0, pierce: false, hitIds: [],
+    };
   }
 
   private updateEnemy(e: Enemy, dt: number) {
     e.hurt -= dt;
     e.stun -= dt;
+    e.slow -= dt;
     e.taunt -= dt;
     e.timer -= dt;
     e.stateTime += dt;
     const def = ENEMIES[e.kind];
     const target = this.pickTarget(e);
-    const ex = e.x + e.w / 2;
-    const dx = target ? target.x + target.w / 2 - ex : 0;
-    const dist = Math.abs(dx);
-    const dir = (dx >= 0 ? 1 : -1) as 1 | -1;
-    let wantsMove = false;
 
-    if (e.stun > 0 || !target) {
-      if (e.onGround) e.vx = approach(e.vx, 0, 900 * dt);
+    if (e.kind === 'boss' && e.state === 'leap') {
+      // 공중에서는 넉백이나 대상 상실과 관계없이 도약을 마친다
+      this.updateBoss(e, target);
+    } else if (e.stun > 0 || !target) {
+      const f = 900 * dt;
+      e.vx = approach(e.vx, 0, f);
+      e.vy = approach(e.vy, 0, f);
     } else {
+      const d = dist(e.x, e.y, target.x, target.y);
+      const toTarget = Math.atan2(target.y - e.y, target.x - e.x);
       switch (e.kind) {
-        case 'slime':
-          if (e.onGround) {
-            e.vx = approach(e.vx, 0, 600 * dt);
-            if (e.timer <= 0 && dist < 450) {
-              e.facing = dir;
-              e.vy = -380 - this.rng() * 120;
-              e.vx = dir * def.speed * 1.8;
-              e.timer = 0.9 + this.rng() * 0.8;
-            }
+        case 'slime': {
+          // 0.45초 튀어 오르고 0.55초 쉰다
+          const cycle = e.stateTime % 1;
+          if (cycle < 0.45) {
+            this.chase(e, target, def.speed * 2.2, 0);
+            e.z = Math.sin((cycle / 0.45) * Math.PI) * 14;
+          } else {
+            e.vx = e.vy = 0;
+            e.z = 0;
           }
+          e.aim = toTarget;
           break;
+        }
 
         case 'goblin':
-          if (dist < 520 && dist > 6) {
-            e.facing = dir;
-            e.vx = dir * def.speed;
-            wantsMove = true;
-          } else e.vx = approach(e.vx, 0, 900 * dt);
+          this.chase(e, target, def.speed, e.r + target.r);
+          e.aim = toTarget;
           break;
 
-        case 'skeleton':
-          e.facing = dir;
-          if (dist < 220) e.vx = -dir * def.speed;
-          else if (dist > 400 && dist < 700) e.vx = dir * def.speed;
-          else e.vx = 0;
-          wantsMove = e.vx !== 0;
-          if (e.timer <= 0 && dist < 500) {
-            this.shoot(e, target, 380, 'enemyArrow', 1);
-            e.timer = 2 + this.rng() * 0.6;
+        case 'skeleton': {
+          e.aim = toTarget;
+          // 시야가 막혀 있으면 돌아서 다가간다
+          const sight = lineOfSight(this.level, e.x, e.y, target.x, target.y);
+          if (!sight || d > 300) this.chase(e, target, def.speed, 0);
+          else if (d < 170) {
+            e.vx = -Math.cos(toTarget) * def.speed;
+            e.vy = -Math.sin(toTarget) * def.speed;
+          } else e.vx = e.vy = 0;
+          if (sight && e.timer <= 0 && d < 380) {
+            // 중간보스(해골 저격수)는 3발을 부채꼴로 쏜다
+            for (const off of e.elite ? [-0.22, 0, 0.22] : [0]) {
+              const p = this.enemyProjectile(e, 'enemyArrow', toTarget + off, 300, 1.6, e.atk);
+              p.vz = 60;
+              p.gz = 120;
+              this.projectiles.push(p);
+            }
+            e.timer = (e.elite ? 1.6 : 2) + this.rng() * 0.6;
           }
           break;
+        }
 
         case 'orc':
-          this.updateOrc(e, target, dir, dist, dt);
-          wantsMove = e.state === 'move';
+          this.updateOrc(e, target, d, toTarget);
           break;
 
         case 'boss':
-          this.updateBoss(e, target, dir, dist, dx, dt);
-          wantsMove = e.state === 'move';
+          this.updateBoss(e, target);
           break;
       }
     }
-
-    e.vy += GRAVITY * dt;
-    const hitWall = moveBody(this.level, e, dt);
-    if (hitWall && wantsMove && e.onGround) e.vy = -560;
+    if (e.slow > 0 && e.stun <= 0) {
+      e.vx *= 0.5;
+      e.vy *= 0.5;
+    }
+    moveBody(this.level, e, dt);
+    if (e.slow > 0 && e.stun <= 0) {
+      e.vx *= 2;
+      e.vy *= 2;
+    }
   }
 
   private setState(e: Enemy, s: Enemy['state']) {
@@ -589,113 +914,134 @@ export class Sim {
     e.stateTime = 0;
   }
 
-  private updateOrc(e: Enemy, target: Player, dir: 1 | -1, dist: number, dt: number) {
+  private updateOrc(e: Enemy, target: Player, d: number, toTarget: number) {
     const def = ENEMIES.orc;
     if (e.state === 'move') {
-      if (dist < 600) {
-        e.facing = dir;
-        e.vx = dist > 50 ? dir * def.speed : 0;
-      } else e.vx = approach(e.vx, 0, 900 * dt);
-      if (dist < 85 && e.timer <= 0) {
+      e.aim = toTarget;
+      this.chase(e, target, def.speed, e.r + target.r + 6);
+      if (d < e.r + target.r + 40 && e.timer <= 0) {
         this.setState(e, 'windup');
-        e.vx = 0;
+        e.vx = e.vy = 0;
       }
     } else if (e.state === 'windup') {
-      e.vx = 0;
+      e.vx = e.vy = 0;
       if (e.stateTime > 0.55) {
-        this.meleeSweep(e, 74, 60, 1.6);
-        this.events.push({ t: 'boom', x: e.x + e.w / 2 + e.facing * 50, y: e.y + e.h - 10, r: 34 });
+        this.enemySweep(e, 70, 1.1, 1.6);
         this.setState(e, 'attack');
       }
-    } else if (e.stateTime > 0.3) {
-      this.setState(e, 'move');
-      e.timer = 1.6;
+    } else {
+      e.vx = e.vy = 0;
+      if (e.stateTime > 0.3) {
+        this.setState(e, 'move');
+        e.timer = 1.6;
+      }
     }
-    void target;
   }
 
-  /** 적이 바라보는 방향 앞쪽에 근접 공격 판정을 만든다. */
-  private meleeSweep(e: Enemy, range: number, height: number, mult: number) {
-    const cx = e.x + e.w / 2;
-    const hx = e.facing > 0 ? cx : cx - range;
-    const hy = e.y + e.h - height;
+  /** 적이 바라보는 방향으로 부채꼴 근접 공격 */
+  private enemySweep(e: Enemy, range: number, arc: number, mult: number) {
+    this.events.push({ t: 'swing', x: e.x, y: e.y, aim: e.aim, range: e.r + range, arc, enemy: true });
     for (const p of this.players) {
-      if (rectsOverlap(hx, hy, range, height, p.x, p.y, p.w, p.h)) this.damagePlayer(p, e.atk * mult, e.facing);
+      if (p.dead) continue;
+      const d = dist(e.x, e.y, p.x, p.y);
+      const ang = Math.atan2(p.y - e.y, p.x - e.x);
+      if (d - p.r <= e.r + range && Math.abs(angleDiff(ang, e.aim)) <= arc) this.damagePlayer(p, e.atk * mult, e.x, e.y);
     }
   }
 
-  private updateBoss(e: Enemy, target: Player, dir: 1 | -1, dist: number, dx: number, dt: number) {
+  private updateBoss(e: Enemy, target: Player | null) {
     const def = ENEMIES.boss;
     const enraged = e.hp < e.maxHp / 2;
     const speed = def.speed * (enraged ? 1.3 : 1);
     const cooldown = () => (enraged ? 1.3 : 2.1) + this.rng() * 0.6;
+    const LEAP_TIME = 0.8;
 
     switch (e.state) {
       case 'move': {
-        e.facing = dir;
-        e.vx = dist > 40 ? dir * speed : 0;
+        if (!target) break;
+        e.aim = Math.atan2(target.y - e.y, target.x - e.x);
+        this.chase(e, target, speed, e.r + target.r);
         if (e.timer > 0) break;
-        const options: Enemy['state'][] = ['leap', 'windup', 'attack'];
-        const roll = this.rng();
-        if (enraged && roll < 0.2 && this.enemies.filter((o) => o.kind !== 'boss').length < 4) {
+        if (enraged && this.rng() < 0.2 && this.enemies.filter((o) => o.kind !== 'boss').length < 4) {
           this.summonAdds(e);
           e.timer = cooldown();
           break;
         }
-        const next = options[Math.floor(this.rng() * options.length)];
-        this.setState(e, next);
-        if (next === 'leap') {
-          e.vy = -820;
-          e.vx = Math.max(-420, Math.min(420, dx * 1.1));
-        } else if (next === 'attack') {
-          // 바위 던지기
-          for (let i = 0; i < (enraged ? 5 : 3); i++) {
-            const sx = e.x + e.w / 2, sy = e.y + 20;
-            this.projectiles.push({
-              id: this.nextId++, fromPlayer: false, ownerId: '', kind: 'rock', x: sx, y: sy,
-              vx: dir * (180 + i * 110), vy: -520 - this.rng() * 200, r: 12,
-              dmg: e.atk * 0.8, crit: false, life: 3, grav: 1200, aoe: 0, pierce: false, hitIds: [],
-            });
-          }
+        const roll = this.rng();
+        if (roll < 0.34) {
+          // 도약: 목표 위치로 뛰어올라 내려찍는다
+          this.setState(e, 'leap');
+          e.tx = target.x;
+          e.ty = target.y;
+          e.vx = (e.tx - e.x) / LEAP_TIME;
+          e.vy = (e.ty - e.y) / LEAP_TIME;
+        } else if (roll < 0.67) {
+          this.setState(e, 'windup');
+          e.vx = e.vy = 0;
+        } else {
+          this.spitFire(e, target, enraged ? 5 : 3);
+          this.setState(e, 'attack');
+          e.vx = e.vy = 0;
         }
         break;
       }
-      case 'leap':
-        if (e.onGround && e.stateTime > 0.2) {
-          e.vx = 0;
-          const fy = e.y + e.h - 14;
-          for (const sdir of [-1, 1]) {
-            this.projectiles.push({
-              id: this.nextId++, fromPlayer: false, ownerId: '', kind: 'shockwave', x: e.x + e.w / 2, y: fy,
-              vx: sdir * 420, vy: 0, r: 14, dmg: e.atk, crit: false, life: 1.4, grav: 0, aoe: 0, pierce: false, hitIds: [],
-            });
+      case 'leap': {
+        const t = e.stateTime / LEAP_TIME;
+        e.z = Math.sin(Math.min(1, t) * Math.PI) * 130;
+        if (t >= 1) {
+          e.z = 0;
+          e.vx = e.vy = 0;
+          const n = enraged ? 16 : 12;
+          for (let i = 0; i < n; i++) {
+            this.projectiles.push(this.enemyProjectile(e, 'shockwave', (i / n) * Math.PI * 2, 240, 1.3, e.atk));
           }
-          this.events.push({ t: 'boom', x: e.x + e.w / 2, y: e.y + e.h, r: 70, shake: true });
+          this.events.push({ t: 'boom', x: e.x, y: e.y, r: 80, shake: true });
+          for (const p of this.players) if (dist(p.x, p.y, e.x, e.y) < e.r + 30) this.damagePlayer(p, e.atk * 1.3, e.x, e.y);
           this.setState(e, 'move');
           e.timer = cooldown();
         }
         break;
+      }
       case 'windup':
-        e.vx = 0;
+        e.vx = e.vy = 0;
+        if (target) e.aim = Math.atan2(target.y - e.y, target.x - e.x);
         if (e.stateTime > 0.6) this.setState(e, 'charge');
         break;
-      case 'charge':
-        e.vx = e.facing * 480 * (enraged ? 1.2 : 1);
+      case 'charge': {
+        const s = 400 * (enraged ? 1.2 : 1);
+        e.vx = Math.cos(e.aim) * s;
+        e.vy = Math.sin(e.aim) * s;
         if (e.stateTime > 0.9) {
           this.setState(e, 'move');
           e.timer = cooldown();
         }
         break;
+      }
       case 'attack':
+        e.vx = e.vy = 0;
         if (e.stateTime > 0.5) {
           this.setState(e, 'move');
           e.timer = cooldown();
         }
         break;
-      default:
-        this.setState(e, 'move');
     }
-    void dt;
+  }
+
+  /** 목표 주변에 화염탄을 뱉는다. 포물선으로 날아가 떨어질 자리에 경고 원이 그려진다. */
+  private spitFire(e: Enemy, target: Player, n: number) {
+    const flight = 1.1, height = 140;
+    for (let i = 0; i < n; i++) {
+      const ang = this.rng() * Math.PI * 2;
+      const off = i === 0 ? 0 : 30 + this.rng() * 70;
+      const lx = target.x + Math.cos(ang) * off + target.vx * 0.4;
+      const ly = target.y + Math.sin(ang) * off + target.vy * 0.4;
+      this.projectiles.push({
+        id: this.nextId++, fromPlayer: false, ownerId: '', kind: 'firebomb',
+        x: e.x, y: e.y, z: 40, vx: (lx - e.x) / flight, vy: (ly - e.y) / flight,
+        vz: (4 * height) / flight, gz: (8 * height) / (flight * flight),
+        r: 12, dmg: e.atk * 0.9, crit: false, life: flight, aoe: 46, pierce: false, hitIds: [],
+      });
+    }
   }
 
   private summonAdds(boss: Enemy) {
@@ -703,22 +1049,40 @@ export class Sim {
     for (const side of [-1, 1]) {
       const g = this.createEnemy('goblin', 4, party);
       g.active = true;
-      g.x = Math.max(this.camX + 40, Math.min(this.camX + VIEW_W - 60, boss.x + boss.w / 2 + side * 120));
-      g.y = boss.y;
+      g.x = boss.x + Math.cos(boss.aim + side * 1.6) * 70;
+      g.y = boss.y + Math.sin(boss.aim + side * 1.6) * 70;
+      if (pointBlocked(this.level, g.x, g.y)) [g.x, g.y] = [boss.x, boss.y];
       this.enemies.push(g);
     }
-    this.events.push({ t: 'banner', text: '', sub: '오우거 군주가 부하를 불렀다!' });
+    this.events.push({ t: 'banner', text: '', sub: `${ENEMIES.boss.name}이 고블린들을 불러냈다!` });
+  }
+
+  /** 적끼리 겹치지 않게 밀어낸다. */
+  private separateEnemies() {
+    const list = this.enemies.filter((e) => e.active);
+    for (let i = 0; i < list.length; i++)
+      for (let j = i + 1; j < list.length; j++) {
+        const a = list[i], b = list[j];
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const d = Math.hypot(dx, dy) || 0.01;
+        const overlap = a.r + b.r - d;
+        if (overlap <= 0) continue;
+        const wa = a.kind === 'boss' ? 0 : b.kind === 'boss' ? 1 : 0.5;
+        const nx = dx / d, ny = dy / d;
+        a.x -= nx * overlap * wa;
+        a.y -= ny * overlap * wa;
+        b.x += nx * overlap * (1 - wa);
+        b.y += ny * overlap * (1 - wa);
+      }
   }
 
   private contactDamage() {
     for (const e of this.enemies) {
-      if (!e.active || e.hp <= 0) continue;
+      if (!e.active || e.hp <= 0 || e.z > 20) continue;
       const mult = e.kind === 'boss' ? (e.state === 'charge' ? 1.4 : 1) : 0.8;
       for (const p of this.players) {
         if (p.dead || p.invuln > 0) continue;
-        if (rectsOverlap(e.x + 4, e.y + 4, e.w - 8, e.h - 4, p.x, p.y, p.w, p.h)) {
-          this.damagePlayer(p, e.atk * mult, p.x + p.w / 2 >= e.x + e.w / 2 ? 1 : -1);
-        }
+        if (dist(e.x, e.y, p.x, p.y) < e.r + p.r - 2) this.damagePlayer(p, e.atk * mult, e.x, e.y);
       }
     }
   }
@@ -729,23 +1093,41 @@ export class Sim {
     const alive: Projectile[] = [];
     for (const pr of this.projectiles) {
       pr.life -= dt;
-      pr.vy += pr.grav * dt;
       pr.x += pr.vx * dt;
       pr.y += pr.vy * dt;
-      let gone = pr.life <= 0;
+      pr.z += pr.vz * dt;
+      pr.vz -= pr.gz * dt;
+      let gone = false;
 
-      if (!gone && tileAt(this.level, Math.floor(pr.x / TILE), Math.floor(pr.y / TILE)) === T_SOLID) {
+      if (pr.kind === 'firebomb' || pr.kind === 'rain' || pr.kind === 'meteor') {
+        // 떨어지는 투사체는 장애물 위로 지나가 착지할 때만 피해를 준다
+        if (pr.life <= 0) {
+          gone = true;
+          if (pr.fromPlayer) this.explode(pr);
+          else {
+            this.events.push({ t: 'boom', x: pr.x, y: pr.y, r: pr.aoe });
+            for (const p of this.players) if (dist(p.x, p.y, pr.x, pr.y) < pr.aoe + p.r) this.damagePlayer(p, pr.dmg, pr.x, pr.y);
+          }
+        }
+        if (!gone) alive.push(pr);
+        continue;
+      }
+
+      const explodes = pr.kind === 'orb' || pr.kind === 'fireball';
+      if (pointBlocked(this.level, pr.x, pr.y) || pr.life <= 0) {
         gone = true;
-        if (pr.kind === 'orb') this.explode(pr);
+        if (explodes) this.explode(pr);
       }
 
       if (!gone && pr.fromPlayer) {
         for (const e of this.enemies) {
-          if (!e.active || e.hp <= 0) continue;
-          if (pr.hitIds.includes(e.id)) continue;
-          if (rectsOverlap(pr.x - pr.r, pr.y - pr.r, pr.r * 2, pr.r * 2, e.x, e.y, e.w, e.h)) {
-            if (pr.kind === 'orb') this.explode(pr);
-            else this.hitEnemy(e, pr.dmg, pr.crit, Math.sign(pr.vx) * 140, this.playerById(pr.ownerId));
+          if (!e.active || e.hp <= 0 || e.z > 30 || pr.hitIds.includes(e.id)) continue;
+          if (dist(pr.x, pr.y, e.x, e.y) < pr.r + e.r) {
+            if (explodes) this.explode(pr);
+            else {
+              const s = Math.hypot(pr.vx, pr.vy) || 1;
+              this.hitEnemy(e, pr.dmg, pr.crit, (pr.vx / s) * 140, (pr.vy / s) * 140, this.playerById(pr.ownerId));
+            }
             if (pr.pierce) {
               pr.hitIds.push(e.id);
               continue;
@@ -757,8 +1139,8 @@ export class Sim {
       } else if (!gone) {
         for (const p of this.players) {
           if (p.dead || p.invuln > 0) continue;
-          if (rectsOverlap(pr.x - pr.r, pr.y - pr.r, pr.r * 2, pr.r * 2, p.x, p.y, p.w, p.h)) {
-            this.damagePlayer(p, pr.dmg, Math.sign(pr.vx) || 1);
+          if (dist(pr.x, pr.y, p.x, p.y) < pr.r + p.r) {
+            this.damagePlayer(p, pr.dmg, pr.x - pr.vx, pr.y - pr.vy);
             if (pr.kind !== 'shockwave') gone = true;
             break;
           }
@@ -774,10 +1156,9 @@ export class Sim {
     const by = this.playerById(pr.ownerId);
     for (const e of this.enemies) {
       if (!e.active || e.hp <= 0) continue;
-      const nx = Math.max(e.x, Math.min(pr.x, e.x + e.w));
-      const ny = Math.max(e.y, Math.min(pr.y, e.y + e.h));
-      if (Math.hypot(nx - pr.x, ny - pr.y) <= pr.aoe) {
-        this.hitEnemy(e, pr.dmg, pr.crit, (e.x + e.w / 2 >= pr.x ? 1 : -1) * 180, by);
+      if (dist(pr.x, pr.y, e.x, e.y) <= pr.aoe + e.r) {
+        const ang = Math.atan2(e.y - pr.y, e.x - pr.x);
+        this.hitEnemy(e, pr.dmg, pr.crit, Math.cos(ang) * 180, Math.sin(ang) * 180, by);
       }
     }
   }
@@ -788,51 +1169,68 @@ export class Sim {
 
   private updateDrops(dt: number) {
     for (const d of this.drops) {
-      if (d.vy === 0 && this.isFloor(d.x, d.y)) continue;
-      const prevY = d.y;
-      d.vy = Math.min(d.vy + GRAVITY * dt, 900);
-      d.y += d.vy * dt;
-      const ty = Math.floor(d.y / TILE);
-      const t = tileAt(this.level, Math.floor(d.x / TILE), ty);
-      if (d.vy > 0 && t !== 0 && (t === T_SOLID || prevY <= ty * TILE + 0.5)) {
-        d.y = ty * TILE;
-        d.vy = 0;
+      if (d.z <= 0 && d.vz <= 0) continue;
+      d.z += d.vz * dt;
+      d.vz -= 900 * dt;
+      if (d.z <= 0) {
+        d.z = 0;
+        d.vz = 0;
       }
     }
-    // 물약은 닿으면 바로 사용
+    // 돈은 가까운 플레이어에게 끌려간다 (주우면 파티 전원이 받는다)
+    for (const d of this.drops) {
+      if (d.kind !== 'gold' || d.z > 0) continue;
+      let best: Player | null = null, bestD = 90;
+      for (const p of this.players) {
+        const dd = dist(p.x, p.y, d.x, d.y);
+        if (!p.dead && dd < bestD) [best, bestD] = [p, dd];
+      }
+      if (!best || bestD < 1) continue;
+      const step = Math.min(bestD, 360 * dt);
+      d.x += ((best.x - d.x) / bestD) * step;
+      d.y += ((best.y - d.y) / bestD) * step;
+    }
+
+    // 닿으면 줍는다: 돈은 지갑에, 음식은 필요하면 바로 먹고 아니면 아이템 상자에
     this.drops = this.drops.filter((d) => {
-      if (d.kind !== 'potion') return true;
-      const p = this.players.find((p) => !p.dead && rectsOverlap(p.x, p.y, p.w, p.h, d.x - 10, d.y - 20, 20, 20));
+      if (d.kind === 'item' || d.z > 0) return true;
+      const p = this.players.find((p) => !p.dead && dist(p.x, p.y, d.x, d.y) < p.r + 12);
       if (!p) return true;
-      this.healPlayer(p, Math.round(p.stats.maxHp * 0.35));
+      if (d.kind === 'gold') {
+        // 협동 게임이라 돈은 경험치처럼 파티 전원이 같은 만큼 받는다 (근접 직업만 돈을 줍는 일이 없도록)
+        for (const o of this.players) {
+          o.gold += d.gold ?? 0;
+          this.events.push({ t: 'gold', pid: o.id, x: o.x, y: o.y, v: d.gold ?? 0 });
+        }
+        return false;
+      }
+      const hungry = d.kind === 'hpFood' ? p.hp < p.stats.maxHp : p.mp < p.stats.maxMp;
+      if (hungry) {
+        if (d.kind === 'hpFood') this.healPlayer(p, Math.round(p.stats.maxHp * FOOD.hp));
+        else this.restoreMp(p, p.stats.maxMp * FOOD.mp);
+        return false;
+      }
+      if (!this.addFood(p, d.kind)) return true; // 더 못 들면 바닥에 둔다
+      this.events.push({ t: 'stash', pid: p.id, kind: d.kind });
       return false;
     });
-  }
-
-  private isFloor(x: number, y: number) {
-    return tileAt(this.level, Math.floor(x / TILE), Math.floor(y / TILE)) !== 0;
   }
 
   // ─── 스냅샷 ────────────────────────────────────────
 
   snapshot(events: GameEvent[]): Snapshot {
-    const lo = this.camX - 200;
-    const hi = this.camX + VIEW_W + 200;
+    const near = (x: number, y: number) => this.players.some((p) => dist(p.x, p.y, x, y) < SNAPSHOT_RADIUS);
     const r = (v: number) => Math.round(v * 10) / 10;
     const boss = this.enemies.find((e) => e.kind === 'boss' && e.active);
     return {
       tick: this.tick,
-      camX: r(this.camX),
       zone: this.zone,
       status: this.status,
-      players: this.players.map((p) => ({ ...p, x: r(p.x), y: r(p.y) })),
-      enemies: this.enemies
-        .filter((e) => e.active && e.x + e.w > lo && e.x < hi)
-        .map((e) => ({ ...e, x: r(e.x), y: r(e.y) })),
-      projectiles: this.projectiles
-        .filter((p) => p.x > lo && p.x < hi)
-        .map((p) => ({ ...p, x: r(p.x), y: r(p.y) })),
-      drops: this.drops.filter((d) => d.x > lo && d.x < hi),
+      players: this.players.map((p) => ({ ...p, x: r(p.x), y: r(p.y), aim: Math.round(p.aim * 100) / 100 })),
+      enemies: this.enemies.filter((e) => e.active && near(e.x, e.y)).map((e) => ({ ...e, x: r(e.x), y: r(e.y) })),
+      projectiles: this.projectiles.filter((p) => near(p.x, p.y)).map((p) => ({ ...p, x: r(p.x), y: r(p.y), z: r(p.z) })),
+      drops: this.drops.filter((d) => near(d.x, d.y)),
+      shops: this.shops.filter((sh) => near(sh.x, sh.y)),
       events,
       boss: boss ? { hp: boss.hp, maxHp: boss.maxHp } : null,
     };

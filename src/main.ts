@@ -1,6 +1,6 @@
 // 로비(방 만들기/참가/직업 선택)와 게임 시작/종료를 관리한다.
 import Phaser from 'phaser';
-import { CLASSES, CLASS_ORDER, VIEW_H, VIEW_W } from './game/data';
+import { ATTR_KEYS, ATTR_NAMES, CLASSES, CLASS_ORDER, VIEW_H, VIEW_W, deriveStats } from './game/data';
 import type { ClassId, LobbyPlayer } from './game/types';
 import { ClientNet, HostNet, type ClientMsg, type HostMsg } from './net/net';
 import { GameScene } from './render/GameScene';
@@ -52,6 +52,8 @@ function renderRoom() {
     const def = CLASSES[id];
     const owner = lobby.find((p) => p.cls === id);
     const mine = owner?.id === myId;
+    const st = deriveStats(id, 1, def.attrs, []);
+    const attrs = ATTR_KEYS.map((k) => (k === def.mainAttr ? `<b>${ATTR_NAMES[k]} ${def.attrs[k]}</b>` : `${ATTR_NAMES[k]} ${def.attrs[k]}`)).join(' · ');
     const card = document.createElement('button');
     card.className = 'card' + (mine ? ' mine' : '') + (owner && !mine ? ' taken' : '');
     card.disabled = !!owner && !mine;
@@ -59,8 +61,8 @@ function renderRoom() {
       <div class="race"><span class="swatch" style="background:${hex(def.color)}"></span>${def.race}</div>
       <div class="name">${def.name}</div>
       <div class="desc">${def.desc}</div>
-      <div class="skill"><b>스킬 · ${def.skill.name}</b> (${def.skill.cd}초)<br />${def.skill.desc}</div>
-      <div class="stats">체력 ${def.base.maxHp} · 공격 ${def.base.atk} · 방어 ${def.base.def} · 치명 ${Math.round(def.base.crit * 100)}%</div>
+      <div class="skill">${def.skills.map((sk, i) => `<div>Lv.${sk.unlock} ${i === 3 ? '★' : ''}<b>${sk.name}</b> <span class="mp">MP ${sk.mp}</span></div>`).join('')}</div>
+      <div class="stats">주 능력치: ${ATTR_NAMES[def.mainAttr]}<br />${attrs}<br />HP ${st.maxHp} · 공격 ${st.atk} · 방어 ${st.def} · 치명 ${Math.round(st.crit * 100)}%</div>
       <div class="owner"></div>`;
     (card.querySelector('.owner') as HTMLElement).textContent = owner ? owner.name : '';
     card.onclick = () => pickClass(id);
@@ -131,6 +133,9 @@ async function createRoom() {
   };
   host.onMessage = (id, msg: ClientMsg) => {
     if (msg.t === 'input') session?.onRemoteInput?.(id, msg.input);
+    else if (msg.t === 'alloc') session?.onRemoteAlloc?.(id, msg.attr);
+    else if (msg.t === 'buy') session?.onRemoteBuy?.(id, msg.shop, msg.idx);
+    else if (msg.t === 'slot') session?.onRemoteSlot?.(id, msg.idx);
     else if (game) return;
     else if (msg.t === 'hello') {
       const p = lobby.find((p) => p.id === id);
@@ -244,6 +249,7 @@ function startGame(seed: number, players: LobbyPlayer[]) {
     width: VIEW_W,
     height: VIEW_H,
     backgroundColor: '#0f1522',
+    transparent: true, // HUD만 그리는 Phaser 화면 아래로 3D 캔버스(World3D)가 비쳐 보이도록
     scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
     input: { gamepad: true },
     scene: [],
@@ -264,8 +270,18 @@ try {
 } catch {
   /* 무시 */
 }
-const roomParam = new URLSearchParams(location.search).get('room');
+const params = new URLSearchParams(location.search);
+const roomParam = params.get('room');
 if (roomParam) $<HTMLInputElement>('code').value = roomParam.toUpperCase();
+
+// 개발 중에만: ?autostart=elf&seed=1 로 로비를 건너뛰고 바로 혼자 시작한다.
+const autostart = params.get('autostart') as ClassId | null;
+if (import.meta.env.DEV && autostart && autostart in CLASSES) {
+  role = 'solo';
+  myId = 'host';
+  lobby = [{ id: 'host', name: '테스트', cls: autostart }];
+  startGame(Number(params.get('seed') ?? 1), lobby);
+}
 
 $('btn-create').onclick = createRoom;
 $('btn-join').onclick = joinRoom;

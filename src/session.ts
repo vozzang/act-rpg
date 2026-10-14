@@ -1,4 +1,4 @@
-import type { InputState, LobbyPlayer, Snapshot } from './game/types';
+import type { AttrKey, InputState, LobbyPlayer, Snapshot } from './game/types';
 import type { ClientNet, HostNet } from './net/net';
 
 /**
@@ -17,5 +17,8 @@ export interface Session {
 
   onSnap?: (s: Snapshot) => void;
   onRemoteInput?: (id: string, input: InputState) => void;
+  onRemoteAlloc?: (id: string, attr: AttrKey) => void;
+  onRemoteBuy?: (id: string, shop: number, idx: number) => void;
+  onRemoteSlot?: (id: string, idx: number) => void;
   onPlayerLeft?: (id: string) => void;
 }

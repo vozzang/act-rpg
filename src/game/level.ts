@@ -1,30 +1,58 @@
 // 시드 기반 맵 생성. 호스트와 클라이언트가 같은 시드로 같은 맵을 만들기 때문에 맵 자체는 전송하지 않는다.
+// 맵은 위에서 내려다본 격자다. 왼쪽(x=0)에서 출발해 오른쪽 끝의 보스 방으로 향한다.
+//
+// 구역마다 통로 3줄이 위아래로 쌓여 있고, 길은 그 안을 오른쪽 → 왼쪽 → 오른쪽으로 꺾어 지나간다(지그재그).
+// 통로 사이는 숲·바위 벽이라 질러갈 수 없다. 구역이 바뀔 때마다 들어오는 줄이 위·아래로 번갈아 바뀐다.
+//
+//   출발 ━━━━━━━━┓ ┏━━━━━━━━━━━━ ┓ ...
+//   ┏━━━━━━━━━━┛ ┗━━━━━━━━━━┓   
+//   ┗━━━━━━━━━━━━━━━━━━━━━━━┛   (1구역: 위→아래, 2구역: 아래→위, ...)
+import { ELITES, TILE } from './data';
 import type { EnemyKind } from './types';
 
-export const T_EMPTY = 0;
-export const T_SOLID = 1;
-export const T_PLATFORM = 2; // 위에서만 밟을 수 있는 발판
+// 장애물 (지나갈 수 없음)
+export const T_FLOOR = 0;
+export const T_TREE = 1;
+export const T_ROCK = 2;
+export const T_SHOP = 3; // 상점 가판대 (지나갈 수 없고, 그림은 렌더러가 따로 그린다)
 
-export const MAP_H = 17;
-const START_W = 20;
-const ZONE_W = 55;
-export const ARENA_W = 30; // 960px = 화면 폭과 정확히 같다
-const BASE_GROUND = 14;
+// 바닥 무늬 (지나갈 수 있음, 그리기 전용)
+export const G_GRASS = 0;
+export const G_ROAD = 1;
+export const G_STONE = 2;
+
+const LANES = 3; // 구역마다 꺾어 지나가는 통로 수
+const LANE_H = 7; // 통로 폭(타일)
+const WALL_H = 3; // 통로 사이 벽 두께
+const BORDER = 2; // 맵 위아래 가장자리 숲
+const TURN_W = 7; // 꺾이는 곳 통로 폭
+export const MAP_H = BORDER * 2 + LANES * LANE_H + (LANES - 1) * WALL_H;
+const START_W = 10;
+const ZONE_W = 36;
+const ARENA_W = 26;
+
+const laneTop = (i: number) => BORDER + i * (LANE_H + WALL_H);
+const laneCenter = (i: number) => laneTop(i) + (LANE_H - 1) / 2;
 
 export interface Spawn {
   kind: EnemyKind;
-  tx: number;
-  ty: number; // 발이 닿는 타일 행
+  x: number; // 월드 좌표
+  y: number;
   zone: number;
+  elite?: number; // 중간보스면 ELITES[zone - 1]의 몇 번째인지
 }
 
 export interface Level {
   w: number;
   h: number;
   tiles: Uint8Array;
+  ground: Uint8Array;
   spawns: Spawn[];
   zoneStartsTx: number[]; // 각 구역이 시작하는 타일 x (index 0 = 1구역)
   arenaTx: number;
+  arenaCenter: { x: number; y: number };
+  shops: { x: number; y: number; zone: number }[]; // 상인 위치 (월드 좌표)
+  start: { x: number; y: number };
 }
 
 export function mulberry32(seed: number): () => number {
@@ -51,66 +79,196 @@ export function buildLevel(seed: number): Level {
   const w = START_W + zones * ZONE_W + ARENA_W;
   const h = MAP_H;
   const tiles = new Uint8Array(w * h);
-  const spawns: Spawn[] = [];
-  const zoneStartsTx: number[] = [];
-  const ground = new Array<number>(w).fill(BASE_GROUND);
+  const ground = new Uint8Array(w * h);
+  const at = (x: number, y: number) => y * w + x;
+  const inMap = (x: number, y: number) => x >= 0 && x < w && y >= 0 && y < h;
+  const setTile = (x: number, y: number, t: number) => {
+    if (inMap(x, y)) tiles[at(x, y)] = t;
+  };
+  const floor = (x: number, y: number) => setTile(x, y, T_FLOOR);
+  const arenaTx = START_W + zones * ZONE_W;
+  const zoneStartsTx = Array.from({ length: zones }, (_, z) => START_W + z * ZONE_W);
+  const zoneOfTxRaw = (tx: number) => zoneStartsTx.reduce((z, sx, i) => (tx >= sx ? i + 1 : z), 1);
 
-  const set = (x: number, y: number, t: number) => {
-    if (x >= 0 && x < w && y >= 0 && y < h) tiles[y * w + x] = t;
+  // 1) 전부 막아 두고 길만 판다. 앞쪽 구역은 숲, 깊은 구역은 바위가 많다
+  for (let x = 0; x < w; x++)
+    for (let y = 0; y < h; y++) {
+      const rockChance = x >= arenaTx ? 1 : zoneOfTxRaw(x) >= 3 ? 0.6 : 0.12;
+      tiles[at(x, y)] = rng() < rockChance ? T_ROCK : T_TREE;
+    }
+
+  // 길을 따라가는 중심점 (몬스터 배치에 쓴다). 구역별로 지나가는 순서대로 쌓인다
+  const paths: { x: number; y: number }[][] = Array.from({ length: zones + 1 }, () => []); // [0] = 출발 지점
+  let wiggle = 0, wiggleV = 0;
+  const roadAt = (x: number, cy: number) => {
+    // 길 중심이 통로 안에서 천천히 굽이친다
+    wiggleV = Math.max(-0.35, Math.min(0.35, wiggleV + (rng() - 0.5) * 0.3));
+    wiggle = Math.max(-1, Math.min(1, wiggle + wiggleV));
+    const y = cy + wiggle;
+    for (let dy = -1; dy <= 1; dy++) ground[at(x, Math.round(y) + dy)] = G_ROAD;
+    return y;
   };
 
-  // 지형 높이: 구역 안에서 6~12칸 단위로 높이가 바뀐다. 시작 지점과 각 구역 경계 부근은 평지.
-  let x = START_W;
-  for (let z = 0; z < zones; z++) {
-    const zoneStart = START_W + z * ZONE_W;
-    zoneStartsTx.push(zoneStart);
-    const zoneEnd = zoneStart + ZONE_W;
-    x = zoneStart + 4;
-    let gy = BASE_GROUND;
-    while (x < zoneEnd - 6) {
-      const segW = 6 + Math.floor(rng() * 7);
-      const step = Math.floor(rng() * 5) - 2; // -2 ~ +2
-      gy = Math.max(11, Math.min(BASE_GROUND, gy + step));
-      for (let i = 0; i < segW && x + i < zoneEnd - 6; i++) ground[x + i] = gy;
-
-      // 떠 있는 발판
-      if (rng() < 0.45 && segW >= 6) {
-        const pw = 3 + Math.floor(rng() * 3);
-        const px = x + 1 + Math.floor(rng() * (segW - pw));
-        const py = gy - 4;
-        for (let i = 0; i < pw; i++) set(px + i, py, T_PLATFORM);
-        if (rng() < 0.5) spawns.push({ kind: pick(rng, ZONE_POOLS[z]), tx: px + 1, ty: py, zone: z + 1 });
-      }
-
-      // 지면 위 적 1~2마리
-      const n = 1 + (rng() < 0.4 + z * 0.12 ? 1 : 0);
-      for (let i = 0; i < n; i++) {
-        spawns.push({ kind: pick(rng, ZONE_POOLS[z]), tx: x + 1 + Math.floor(rng() * (segW - 2)), ty: gy, zone: z + 1 });
-      }
-      x += segW;
+  /** 통로 한 줄을 판다. 가장자리는 군데군데 한 칸씩 더 파서 울퉁불퉁하게 */
+  const carveLane = (lane: number, x0: number, x1: number) => {
+    const top = laneTop(lane);
+    for (let x = x0; x <= x1; x++) {
+      for (let y = top; y < top + LANE_H; y++) floor(x, y);
+      if (rng() < 0.35) floor(x, top - 1);
+      if (rng() < 0.35) floor(x, top + LANE_H);
     }
-    // 구역 끝의 정예 몬스터
-    spawns.push({ kind: 'orc', tx: zoneEnd - 4, ty: BASE_GROUND, zone: z + 1 });
+  };
+  /** 길을 따라 x0 → x1 방향으로 걷는다 (도로 표시 + 경로 기록) */
+  const walkLane = (lane: number, x0: number, x1: number, path: { x: number; y: number }[]) => {
+    const step = x1 >= x0 ? 1 : -1;
+    for (let x = x0; x !== x1 + step; x += step) path.push({ x, y: roadAt(x, laneCenter(lane)) });
+  };
+  /** 통로 a와 b 사이 벽을 뚫어 U자로 꺾는다 (x0~x0+TURN_W-1 열). 꺾이는 곳 가운데를 돌려준다 */
+  const carveTurn = (a: number, b: number, x0: number, path: { x: number; y: number }[]) => {
+    const [lo, hi] = a < b ? [a, b] : [b, a];
+    for (let x = x0; x < x0 + TURN_W; x++) for (let y = laneTop(lo); y < laneTop(hi) + LANE_H; y++) floor(x, y);
+    const cx = x0 + (TURN_W - 1) / 2;
+    const ya = laneCenter(a), yb = laneCenter(b);
+    const dir = yb > ya ? 1 : -1;
+    for (let y = ya; dir > 0 ? y <= yb : y >= yb; y += dir) {
+      for (let dx = -1; dx <= 1; dx++) ground[at(Math.round(cx) + dx, y)] = G_ROAD;
+      path.push({ x: cx, y });
+    }
+    wiggle = 0;
+    return { x: cx, y: (ya + yb) / 2 };
+  };
+
+  // 2) 출발 지점: 1구역 첫 줄(맨 위)로 이어진다
+  carveLane(0, 1, START_W - 1);
+  walkLane(0, 1, START_W - 1, paths[0]);
+
+  // 3) 구역마다 지그재그 통로
+  const turns: { x: number; y: number }[][] = Array.from({ length: zones }, () => []); // 구역별 꺾이는 곳 (중간보스 자리)
+  for (let z = 0; z < zones; z++) {
+    const zs = zoneStartsTx[z], ze = zs + ZONE_W - 1;
+    const order = z % 2 === 0 ? [0, 1, 2] : [2, 1, 0]; // 짝수 구역은 위에서, 홀수 구역은 아래에서 들어온다
+    const path = paths[z + 1];
+    order.forEach((lane, k) => {
+      carveLane(lane, k === 0 ? zs : zs + 1, ze);
+      if (k % 2 === 0) walkLane(lane, k === 0 ? zs : zs + 1, k === 2 ? ze : ze - TURN_W, path);
+      else walkLane(lane, ze - TURN_W, zs + TURN_W + 1, path);
+      if (k === 0) turns[z].push(carveTurn(lane, order[1], ze - TURN_W + 1, path));
+      if (k === 1) turns[z].push(carveTurn(lane, order[2], zs + 1, path));
+    });
+    // 구역 경계: 들어오는 줄만 뚫린 무너진 성벽 (렌더러가 경계 열의 바위를 성벽으로 그린다)
+    if (z > 0) {
+      const entry = order[0];
+      for (let y = 0; y < h; y++) {
+        const open = y >= laneTop(entry) && y < laneTop(entry) + LANE_H;
+        if (!open) setTile(zs, y, T_ROCK);
+      }
+    }
+    // 통로 안의 나무·바위 덤불 (길에서 떨어진 곳에만)
+    const blockType = z >= 2 ? T_ROCK : T_TREE;
+    for (let c = 0; c < 10 + z * 2; c++) {
+      const lane = Math.floor(rng() * LANES);
+      const cx = zs + 2 + Math.floor(rng() * (ZONE_W - 4));
+      const cy = laneTop(lane) + (rng() < 0.5 ? 0 : LANE_H - 1);
+      const rad = 0.8 + rng() * 1.2;
+      for (let dy = -2; dy <= 2; dy++)
+        for (let dx = -2; dx <= 2; dx++) {
+          const x = cx + dx, y = cy + dy;
+          if (inMap(x, y) && ground[at(x, y)] !== G_ROAD && Math.hypot(dx, dy) <= rad && rng() < 0.8) setTile(x, y, blockType);
+        }
+    }
   }
 
-  const arenaTx = START_W + zones * ZONE_W;
-  spawns.push({ kind: 'boss', tx: arenaTx + ARENA_W - 6, ty: BASE_GROUND, zone: zones });
+  // 4) 보스 방: 4구역 마지막 줄 끝에서 들어가는 타원형 공터
+  const exitLane = (zones - 1) % 2 === 0 ? 2 : 0;
+  const acx = arenaTx + ARENA_W / 2, acy = h / 2;
+  for (let x = arenaTx; x < w - 1; x++)
+    for (let y = 0; y < h; y++) {
+      const d = Math.hypot((x + 0.5 - acx) / (ARENA_W / 2 - 1), (y + 0.5 - acy) / (h / 2 - 2));
+      const entrance = x < arenaTx + 6 && y >= laneTop(exitLane) && y < laneTop(exitLane) + LANE_H;
+      if (d < 1 || entrance) {
+        floor(x, y);
+        ground[at(x, y)] = G_STONE;
+      }
+    }
 
-  for (let tx = 0; tx < w; tx++) {
-    for (let ty = ground[tx]; ty < h; ty++) set(tx, ty, T_SOLID);
-  }
-  // 양 끝 벽
-  for (let ty = 0; ty < h; ty++) {
-    set(0, ty, T_SOLID);
-    set(w - 1, ty, T_SOLID);
-  }
-  // 보스 방 공중 발판
-  for (let i = 0; i < 5; i++) {
-    set(arenaTx + 6 + i, 10, T_PLATFORM);
-    set(arenaTx + ARENA_W - 11 + i, 10, T_PLATFORM);
+  // 5) 상점: 출발 지점과 2~4구역 입구 통로의 위쪽 가장자리
+  const shops: Level['shops'] = [];
+  const shopSpots = [{ tx: START_W - 4, lane: 0 }, ...zoneStartsTx.slice(1).map((zs, i) => ({ tx: zs + 4, lane: (i + 1) % 2 === 0 ? 0 : 2 }))];
+  for (const { tx, lane } of shopSpots) {
+    const ty = laneTop(lane);
+    for (let dy = 0; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) floor(tx + dx, ty + dy);
+    setTile(tx, ty, T_SHOP);
+    shops.push({ x: (tx + 0.5) * TILE, y: (ty + 0.5) * TILE, zone: zoneOfTxRaw(tx) });
   }
 
-  return { w, h, tiles, spawns, zoneStartsTx, arenaTx };
+  // 6) 몬스터 무리: 구역마다 길을 따라 고르게 (들어오자마자는 비워 둔다)
+  const spawns: Spawn[] = [];
+  const free = (x: number, y: number) => inMap(x, y) && tiles[at(x, y)] === T_FLOOR;
+  const world = (t: number) => (t + 0.5) * TILE;
+  for (let z = 1; z <= zones; z++) {
+    const path = paths[z];
+    const packs = 9 + z;
+    const skip = 10;
+    for (let k = 0; k < packs; k++) {
+      const p = path[Math.floor(skip + ((k + rng() * 0.6) / packs) * (path.length - skip - 4))];
+      const px = Math.round(p.x);
+      let py = Math.round(p.y + (rng() - 0.5) * 4);
+      if (!free(px, py)) py = Math.round(p.y);
+      const n = 2 + Math.floor(rng() * (z >= 3 ? 3 : 2));
+      for (let i = 0; i < n; i++) {
+        const sx = px + Math.round((rng() - 0.5) * 3);
+        const sy = py + Math.round((rng() - 0.5) * 3);
+        const [tx, ty] = free(sx, sy) ? [sx, sy] : [px, py];
+        spawns.push({ kind: pick(rng, ZONE_POOLS[z - 1]), x: world(tx), y: world(ty), zone: z });
+      }
+    }
+    // 구역 출구를 지키는 정예 몬스터
+    const ep = path[path.length - 4];
+    spawns.push({ kind: 'orc', x: world(Math.round(ep.x)), y: world(Math.round(ep.y)), zone: z });
+    // 꺾이는 두 곳을 지키는 중간보스
+    turns[z - 1].forEach((t, i) => {
+      spawns.push({ kind: ELITES[z - 1][i].kind, elite: i, x: world(Math.round(t.x)), y: world(Math.round(t.y)), zone: z });
+    });
+  }
+
+  // 7) 덤불에 갇힌 곳에 생긴 몬스터는 같은 구역의 가장 가까운 길 위로 옮긴다
+  const startTile = { x: 3, y: Math.round(laneCenter(0)) };
+  const reach = reachable(tiles, w, h, startTile.x, startTile.y);
+  for (const s of spawns) {
+    const tx = Math.floor(s.x / TILE), ty = Math.floor(s.y / TILE);
+    if (reach[at(tx, ty)]) continue;
+    const near = paths[s.zone].reduce((a, b) => (Math.hypot(b.x - tx, b.y - ty) < Math.hypot(a.x - tx, a.y - ty) ? b : a));
+    s.x = world(Math.round(near.x));
+    s.y = world(Math.round(near.y));
+  }
+
+  const arenaCenter = { x: acx * TILE, y: acy * TILE };
+  spawns.push({ kind: 'boss', x: arenaCenter.x + TILE * 4, y: arenaCenter.y, zone: zones });
+
+  return {
+    w, h, tiles, ground, spawns, zoneStartsTx, arenaTx, arenaCenter, shops,
+    start: { x: world(startTile.x), y: world(startTile.y) },
+  };
+}
+
+/** (sx, sy)에서 걸어서 갈 수 있는 칸 표시 */
+function reachable(tiles: Uint8Array, w: number, h: number, sx: number, sy: number): Uint8Array {
+  const seen = new Uint8Array(w * h);
+  const stack = [sy * w + sx];
+  seen[sy * w + sx] = 1;
+  while (stack.length) {
+    const cur = stack.pop()!;
+    const x = cur % w, y = (cur - x) / w;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = x + dx, ny = y + dy;
+      if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+      const ni = ny * w + nx;
+      if (seen[ni] || tiles[ni] !== T_FLOOR) continue;
+      seen[ni] = 1;
+      stack.push(ni);
+    }
+  }
+  return seen;
 }
 
 function pick<T>(rng: () => number, arr: T[]): T {
@@ -118,7 +276,19 @@ function pick<T>(rng: () => number, arr: T[]): T {
 }
 
 export function tileAt(level: Level, tx: number, ty: number): number {
-  if (tx < 0 || tx >= level.w) return T_SOLID;
-  if (ty < 0 || ty >= level.h) return T_EMPTY;
+  if (tx < 0 || tx >= level.w || ty < 0 || ty >= level.h) return T_ROCK;
   return level.tiles[ty * level.w + tx];
+}
+
+export function blockedAt(level: Level, tx: number, ty: number): boolean {
+  return tileAt(level, tx, ty) !== T_FLOOR;
+}
+
+/** 타일 x가 속한 구역 (1부터). 시작 지점은 1, 보스 방은 마지막 구역. */
+export function zoneOfTx(level: Level, tx: number): number {
+  let zone = 1;
+  level.zoneStartsTx.forEach((sx, i) => {
+    if (tx >= sx) zone = i + 1;
+  });
+  return zone;
 }

@@ -1,10 +1,10 @@
 // 밸런스 데이터. 수치 조정은 대부분 이 파일에서 하면 된다.
-import type { ClassId, EnemyKind, Item, Rarity, Slot, Stats } from './types';
+// 거리·속도는 월드 좌표(px) 기준이다. 타일 한 칸(TILE = 32)이 3D 화면에서 1칸 크기의 블록이 된다.
+import type { AttrKey, Attrs, ClassId, EnemyKind, Item, ItemStats, Rarity, Slot, Stats } from './types';
 
 export const TILE = 32;
 export const VIEW_W = 960;
 export const VIEW_H = 544;
-export const GRAVITY = 1800;
 export const TICK_RATE = 60;
 export const SNAPSHOT_EVERY = 3; // 60/3 = 초당 20회 전송
 export const REVIVE_TIME = 2;
@@ -13,82 +13,190 @@ export const ZONE_NAMES = ['초록 숲', '고블린 협곡', '해골 묘지', '�
 // ─── 직업 ────────────────────────────────────────────
 
 export type AttackDef =
-  | { kind: 'melee'; cd: number; mult: number; range: number; height: number; knock: number }
   | {
-      kind: 'projectile'; cd: number; mult: number; speed: number; proj: 'arrow' | 'orb'; aoe: number;
-      lift: number; // 조준할 적이 없을 때 위쪽 초속 (포물선 높이)
-      grav: number; // 투사체에 걸리는 중력 (0이면 직선). 0보다 크면 앞쪽 가장 가까운 적에게 포물선으로 조준한다.
-      aimRange: number;
+      kind: 'melee'; cd: number; mult: number;
+      range: number; // 몸 중심에서 닿는 거리
+      arc: number; // 조준 방향 기준 좌우 각도(라디안)
+      knock: number;
+    }
+  | {
+      kind: 'projectile'; cd: number; mult: number; speed: number; proj: 'arrow' | 'orb';
+      range: number; // 최대 비행 거리
+      aoe: number; // 0보다 크면 터지면서 범위 피해
+      arcHeight: number; // 포물선 최고 높이 (보이는 효과)
     };
 
 export interface SkillDef {
   name: string;
-  cd: number;
+  cd: number; // 재사용 대기시간(초)
+  mp: number; // 소모 MP. 위력이 클수록 많이 든다
+  unlock: number; // 배우는 레벨
   desc: string;
 }
+
+/** 스킬을 배우는 레벨. 마지막이 최종 스킬. */
+export const SKILL_UNLOCKS = [1, 4, 7, 10];
 
 export interface ClassDef {
   name: string;
   race: string;
   color: number;
-  w: number;
-  h: number;
+  r: number; // 충돌 반지름
+  height: number; // 키 (머리 위 이름표 위치 기준, 월드 px)
   speed: number;
-  jump: number;
   aggro: number; // 적이 이 직업을 노릴 때 거리 배율. 작을수록 더 잘 노려진다.
-  base: Stats;
-  growth: Stats; // 레벨당 상승량
+  mainAttr: AttrKey; // 공격력이 오르는 주 능력치
+  attrs: Attrs; // 1레벨 능력치
+  attrGrowth: Attrs; // 레벨업마다 자동으로 오르는 능력치
+  bonus: { hp: number; atk: number; def: number; crit: number; mp: number; mpLv: number; mpRegen: number }; // 능력치와 별개인 직업 기본값
   attack: AttackDef;
-  skill: SkillDef;
+  skills: SkillDef[]; // 4개, SKILL_UNLOCKS 레벨에 하나씩 배운다
   weaponNoun: string;
   desc: string;
 }
 
 export const CLASSES: Record<ClassId, ClassDef> = {
   swordsman: {
-    name: '검사', race: '휴먼', color: 0x4a90e2, w: 26, h: 50, speed: 230, jump: 640, aggro: 1,
-    base: { maxHp: 120, atk: 14, def: 4, crit: 0.08 },
-    growth: { maxHp: 14, atk: 3, def: 1, crit: 0.004 },
-    attack: { kind: 'melee', cd: 0.32, mult: 1.0, range: 62, height: 54, knock: 200 },
-    skill: { name: '돌진 베기', cd: 5, desc: '앞으로 돌진하며 지나가는 적을 벤다. 돌진 중 무적.' },
+    name: '검사', race: '휴먼', color: 0x4a90e2, r: 12, height: 50, speed: 170, aggro: 1,
+    mainAttr: 'str',
+    attrs: { str: 10, dex: 6, int: 3, vit: 8 },
+    attrGrowth: { str: 2, dex: 1, int: 0, vit: 1.5 },
+    bonus: { hp: 56, atk: 6, def: 0.5, crit: 0.056, mp: 50, mpLv: 4, mpRegen: 2.5 },
+    attack: { kind: 'melee', cd: 0.32, mult: 1.0, range: 62, arc: 1.0, knock: 200 },
+    skills: [
+      { name: '돌진 베기', cd: 5, mp: 10, unlock: 1, desc: '조준 방향으로 돌진하며 지나가는 적을 벤다. 돌진 중 무적.' },
+      { name: '회오리 베기', cd: 7, mp: 20, unlock: 4, desc: '제자리에서 회전하며 주변의 모든 적을 벤다.' },
+      { name: '전투 함성', cd: 18, mp: 30, unlock: 7, desc: '주변 동료와 자신의 공격력을 8초간 25% 올린다.' },
+      { name: '검기 폭풍', cd: 20, mp: 60, unlock: 10, desc: '거대한 검기를 날려 일직선의 모든 적을 베어 버린다.' },
+    ],
     weaponNoun: '장검',
     desc: '빠른 연속 베기. 균형 잡힌 능력치.',
   },
   dwarf: {
-    name: '수호자', race: '드워프', color: 0xd08040, w: 34, h: 40, speed: 195, jump: 590, aggro: 0.5,
-    base: { maxHp: 200, atk: 12, def: 9, crit: 0.03 },
-    growth: { maxHp: 26, atk: 2.2, def: 2, crit: 0.002 },
-    attack: { kind: 'melee', cd: 0.6, mult: 1.4, range: 56, height: 50, knock: 380 },
-    skill: { name: '도발', cd: 12, desc: '주변 적의 시선을 끌고 4초간 받는 피해 60% 감소.' },
+    name: '수호자', race: '드워프', color: 0xd08040, r: 15, height: 40, speed: 150, aggro: 0.5,
+    mainAttr: 'str',
+    attrs: { str: 9, dex: 3, int: 2, vit: 12 },
+    attrGrowth: { str: 1.5, dex: 0.5, int: 0, vit: 2.5 },
+    bonus: { hp: 104, atk: 4.8, def: 4.65, crit: 0.018, mp: 60, mpLv: 4, mpRegen: 2.5 },
+    attack: { kind: 'melee', cd: 0.6, mult: 1.4, range: 58, arc: 1.3, knock: 380 },
+    skills: [
+      { name: '도발', cd: 12, mp: 15, unlock: 1, desc: '주변 적의 시선을 끌고 4초간 받는 피해 60% 감소.' },
+      { name: '대지 강타', cd: 8, mp: 20, unlock: 4, desc: '땅을 내리쳐 주변 적에게 피해를 주고 기절시킨다.' },
+      { name: '방패 돌진', cd: 9, mp: 25, unlock: 7, desc: '방패를 앞세워 돌진하며 부딪힌 적을 날려 보내고 기절시킨다.' },
+      { name: '산의 수호', cd: 30, mp: 70, unlock: 10, desc: '주변 동료가 6초간 받는 피해를 절반으로 줄이고 체력을 20% 회복시킨다.' },
+    ],
     weaponNoun: '전투도끼',
     desc: '튼튼한 몸과 강한 넉백. 적이 우선적으로 노린다.',
   },
   elf: {
-    name: '궁수', race: '엘프', color: 0x4caf50, w: 22, h: 56, speed: 245, jump: 680, aggro: 1.2,
-    base: { maxHp: 90, atk: 13, def: 2, crit: 0.15 },
-    growth: { maxHp: 10, atk: 2.8, def: 0.6, crit: 0.006 },
-    attack: { kind: 'projectile', cd: 0.42, mult: 0.9, speed: 680, proj: 'arrow', aoe: 0, lift: 330, grav: 850, aimRange: 720 },
-    skill: { name: '부채 사격', cd: 6, desc: '적을 관통하는 화살 5발을 부채꼴로 쏜다.' },
+    name: '궁수', race: '엘프', color: 0x4caf50, r: 11, height: 56, speed: 180, aggro: 1.2,
+    mainAttr: 'dex',
+    attrs: { str: 4, dex: 11, int: 4, vit: 6 },
+    attrGrowth: { str: 0.5, dex: 2.5, int: 0.5, vit: 1 },
+    bonus: { hp: 42, atk: 4.2, def: 0, crit: 0.106, mp: 55, mpLv: 5, mpRegen: 3 },
+    attack: { kind: 'projectile', cd: 0.42, mult: 0.9, speed: 520, proj: 'arrow', range: 480, aoe: 0, arcHeight: 60 },
+    skills: [
+      { name: '부채 사격', cd: 6, mp: 12, unlock: 1, desc: '적을 관통하는 화살 5발을 부채꼴로 쏜다.' },
+      { name: '저격', cd: 6, mp: 18, unlock: 4, desc: '멀리까지 꿰뚫는 강력한 화살 한 발. 공격력 3배.' },
+      { name: '화살비', cd: 12, mp: 35, unlock: 7, desc: '조준한 곳에 화살을 비처럼 쏟아붓는다.' },
+      { name: '폭풍의 화살', cd: 20, mp: 60, unlock: 10, desc: '사방으로 관통하는 화살 16발을 동시에 쏜다.' },
+    ],
     weaponNoun: '장궁',
-    desc: '멀리 날아가는 화살. 치명타 확률이 높다.',
+    desc: '포물선을 그리며 멀리 날아가는 화살. 치명타 확률이 높다.',
   },
   gnome: {
-    name: '마법사', race: '노움', color: 0x9c5bd6, w: 20, h: 32, speed: 215, jump: 620, aggro: 1.2,
-    base: { maxHp: 80, atk: 16, def: 1, crit: 0.06 },
-    growth: { maxHp: 9, atk: 3.4, def: 0.5, crit: 0.003 },
-    attack: { kind: 'projectile', cd: 0.75, mult: 1.2, speed: 430, proj: 'orb', aoe: 80, lift: 0, grav: 0, aimRange: 0 },
-    skill: { name: '치유의 빛', cd: 14, desc: '주변 동료를 30% 회복하고 쓰러진 동료를 일으킨다.' },
+    name: '마법사', race: '노움', color: 0x9c5bd6, r: 10, height: 32, speed: 160, aggro: 1.2,
+    mainAttr: 'int',
+    attrs: { str: 2, dex: 4, int: 12, vit: 5 },
+    attrGrowth: { str: 0, dex: 0.5, int: 3, vit: 1 },
+    bonus: { hp: 40, atk: 6.4, def: 0, crit: 0.044, mp: 40, mpLv: 6, mpRegen: 3 },
+    attack: { kind: 'projectile', cd: 0.75, mult: 1.2, speed: 340, proj: 'orb', range: 340, aoe: 70, arcHeight: 0 },
+    skills: [
+      { name: '치유의 빛', cd: 14, mp: 25, unlock: 1, desc: '주변 동료를 30% 회복하고 쓰러진 동료를 일으킨다.' },
+      { name: '냉기 파동', cd: 8, mp: 20, unlock: 4, desc: '주변에 냉기를 퍼뜨려 피해를 주고 3초간 느리게 만든다.' },
+      { name: '화염구', cd: 6, mp: 30, unlock: 7, desc: '크게 폭발하는 불덩이를 던진다. 공격력 2.5배.' },
+      { name: '메테오', cd: 25, mp: 80, unlock: 10, desc: '조준한 곳에 거대한 운석을 떨어뜨린다. 공격력 5배.' },
+    ],
     weaponNoun: '지팡이',
     desc: '터지는 마법 구체로 여러 적에게 피해를 준다.',
   },
 };
 
-// 스킬 세부 수치
+// ─── 능력치 ──────────────────────────────────────────
+
+export const ATTR_KEYS: AttrKey[] = ['str', 'dex', 'int', 'vit'];
+export const ATTR_NAMES: Record<AttrKey, string> = { str: '힘', dex: '민첩', int: '지능', vit: '체력' };
+export const POINTS_PER_LEVEL = 3;
+
+/** 능력치 1당 효과. 여기만 바꾸면 전체 밸런스가 바뀐다. */
+export const ATTR_EFFECT = {
+  mainAtk: 0.8, // 주 능력치 1당 공격력
+  vitHp: 8, // 체력 1당 최대 HP
+  levelHp: 4, // 레벨당 추가 HP
+  vitDef: 0.25, // 체력 1당 방어
+  strDef: 0.15, // 힘 1당 방어
+  dexCrit: 0.004, // 민첩 1당 치명타 확률
+  dexHaste: 0.005, // 민첩 1당 공격 속도
+  intCdr: 0.008, // 지능 1당 스킬 재사용 가속
+  intHeal: 0.01, // 지능 1당 회복량 증가
+  intMp: 5, // 지능 1당 최대 MP
+  intMpRegen: 0.1, // 지능 1당 초당 MP 회복
+};
+
+export const ATTR_DESC: Record<AttrKey, string> = {
+  str: '근접 공격력, 방어',
+  dex: '원거리 공격력, 치명타, 공격 속도',
+  int: '마법 공격력, MP, 스킬 재사용, 회복량',
+  vit: '최대 HP, 방어',
+};
+
+/** 레벨·배분 포인트·장비로 최종 능력치를 계산한다. */
+export function totalAttrs(cls: ClassId, level: number, alloc: Attrs, items: (Item | undefined)[]): Attrs {
+  const def = CLASSES[cls];
+  const a = {} as Attrs;
+  for (const k of ATTR_KEYS) {
+    a[k] = def.attrs[k] + def.attrGrowth[k] * (level - 1) + alloc[k];
+    for (const it of items) a[k] += it?.stats[k] ?? 0;
+    a[k] = Math.floor(a[k]);
+  }
+  return a;
+}
+
+/** 능력치 → 전투 수치 */
+export function deriveStats(cls: ClassId, level: number, attrs: Attrs, items: (Item | undefined)[]): Stats {
+  const def = CLASSES[cls];
+  const e = ATTR_EFFECT;
+  const sum = (k: keyof ItemStats) => items.reduce((s, it) => s + (it?.stats[k] ?? 0), 0);
+  return {
+    maxHp: Math.round(def.bonus.hp + attrs.vit * e.vitHp + (level - 1) * e.levelHp + sum('maxHp')),
+    atk: Math.round(def.bonus.atk + attrs[def.mainAttr] * e.mainAtk + sum('atk')),
+    def: Math.round(def.bonus.def + attrs.vit * e.vitDef + attrs.str * e.strDef + sum('def')),
+    crit: Math.min(0.75, def.bonus.crit + attrs.dex * e.dexCrit + sum('crit')),
+    haste: attrs.dex * e.dexHaste,
+    cdr: attrs.int * e.intCdr,
+    maxMp: Math.round(def.bonus.mp + attrs.int * e.intMp + (level - 1) * def.bonus.mpLv),
+    mpRegen: def.bonus.mpRegen + attrs.int * e.intMpRegen,
+  };
+}
+
+// 스킬 세부 수치 (이름표는 '직업.순서')
 export const SKILL = {
-  dash: { time: 0.22, speed: 950, mult: 2.0 },
-  taunt: { radius: 420, time: 4, guard: 4, reduce: 0.6 },
-  volley: { arrows: 5, spread: 0.5, mult: 1.1 },
-  heal: { radius: 260, ratio: 0.3 },
+  dash: { time: 0.22, speed: 760, mult: 2.0 }, // 검사 1
+  whirl: { radius: 85, mult: 1.6 }, // 검사 2
+  warcry: { radius: 260, time: 8, atk: 0.25 }, // 검사 3
+  wave: { speed: 620, range: 520, r: 26, mult: 3.5 }, // 검사 4
+  taunt: { radius: 300, time: 4, guard: 4, reduce: 0.6 }, // 수호자 1
+  slam: { radius: 110, mult: 1.5, stun: 1.2 }, // 수호자 2
+  bash: { time: 0.35, speed: 620, mult: 1.2, stun: 1.0, knock: 420 }, // 수호자 3
+  bastion: { radius: 300, time: 6, reduce: 0.5, heal: 0.2 }, // 수호자 4
+  volley: { arrows: 5, spread: 0.5, mult: 1.1 }, // 궁수 1
+  snipe: { speed: 820, range: 680, mult: 3 }, // 궁수 2
+  rain: { distance: 240, radius: 95, arrows: 12, aoe: 34, mult: 0.75 }, // 궁수 3
+  storm: { arrows: 16, mult: 1.5 }, // 궁수 4
+  heal: { radius: 200, ratio: 0.3 }, // 마법사 1
+  frost: { radius: 125, mult: 1.0, slow: 3 }, // 마법사 2
+  fireball: { speed: 380, range: 380, aoe: 120, mult: 2.5 }, // 마법사 3
+  meteor: { distance: 260, aoe: 170, mult: 5, fall: 1.0 }, // 마법사 4
 };
 
 export const CLASS_ORDER: ClassId[] = ['swordsman', 'dwarf', 'elf', 'gnome'];
@@ -103,23 +211,79 @@ export function xpForLevel(level: number): number {
 
 export interface EnemyDef {
   name: string;
-  w: number;
-  h: number;
+  r: number; // 충돌 반지름. 길찾기가 타일 단위라 보스 외에는 지름이 한 칸(32)보다 작아야 좁은 틈을 지나간다.
+  height: number; // 키 (머리 위 체력바 위치 기준, 월드 px)
   hp: number;
   atk: number;
   def: number;
   speed: number;
   xp: number;
-  color: number;
+  gold: number; // 떨어뜨리는 돈 (구역이 깊을수록 늘어난다)
   dropRate: number;
 }
 
 export const ENEMIES: Record<EnemyKind, EnemyDef> = {
-  slime: { name: '슬라임', w: 30, h: 22, hp: 30, atk: 7, def: 0, speed: 70, xp: 12, color: 0x66cc66, dropRate: 0.15 },
-  goblin: { name: '고블린', w: 24, h: 36, hp: 48, atk: 10, def: 2, speed: 135, xp: 20, color: 0x8fae3a, dropRate: 0.22 },
-  skeleton: { name: '해골 궁수', w: 24, h: 46, hp: 40, atk: 9, def: 1, speed: 60, xp: 26, color: 0xe0e0d0, dropRate: 0.28 },
-  orc: { name: '오크 전사', w: 40, h: 56, hp: 160, atk: 16, def: 6, speed: 85, xp: 60, color: 0x4d7a3a, dropRate: 0.75 },
-  boss: { name: '오우거 군주', w: 90, h: 110, hp: 2200, atk: 24, def: 8, speed: 110, xp: 0, color: 0x8a2a2a, dropRate: 1 },
+  slime: { name: '슬라임', r: 13, height: 22, hp: 30, atk: 7, def: 0, speed: 60, xp: 12, gold: 4, dropRate: 0.15 },
+  goblin: { name: '고블린', r: 11, height: 36, hp: 48, atk: 10, def: 2, speed: 105, xp: 20, gold: 6, dropRate: 0.22 },
+  skeleton: { name: '해골 궁수', r: 11, height: 46, hp: 40, atk: 9, def: 1, speed: 55, xp: 26, gold: 8, dropRate: 0.28 },
+  orc: { name: '오크 전사', r: 15, height: 56, hp: 160, atk: 16, def: 6, speed: 70, xp: 60, gold: 25, dropRate: 0.75 },
+  boss: { name: '흑룡', r: 40, height: 110, hp: 3300, atk: 55, def: 12, speed: 85, xp: 0, gold: 0, dropRate: 1 },
+};
+
+// ─── 회복 음식 / 상점 ──────────────────────────────────
+
+export const FOOD = {
+  hp: 0.35, // HP 음식: 최대 HP의 35% 회복
+  mp: 0.5, // MP 음식: 최대 MP의 50% 회복
+  stackMax: 5, // 종류별로 들고 다닐 수 있는 개수 (상자 한 칸에 모인다)
+};
+
+/** 아이템 상자 칸 수 */
+export const INV_SIZE = 6;
+
+export const SHOP = {
+  range: 80, // 상인과 이 거리 안에 있어야 살 수 있다
+  foodPrice: 20,
+  items: 3, // 상점마다 파는 장비 수
+  itemPrice: { common: 25, rare: 55, epic: 110, legendary: 240 } as Record<Rarity, number>,
+  // 상점 장비는 필드 드랍보다 좋은 등급이 잘 나온다
+  rarityWeight: { common: 30, rare: 45, epic: 20, legendary: 5 } as Record<Rarity, number>,
+};
+
+/** 구역이 깊을수록 장비 값이 오른다 */
+export function shopItemPrice(rarity: Rarity, zone: number) {
+  return Math.round(SHOP.itemPrice[rarity] * (1 + 0.6 * (zone - 1)));
+}
+
+/** 적이 플레이어를 알아차리는 거리 */
+export const AGGRO_RANGE = 420;
+
+// ─── 중간보스 ─────────────────────────────────────────
+
+export interface EliteDef {
+  kind: Exclude<EnemyKind, 'boss'>; // 움직임·공격 방식과 모델은 이 몬스터를 따른다
+  name: string;
+  hp: number; // 1구역 기준 능력치. 여기에 구역 보정(zoneScale)과 인원수 보정이 곱해진다
+  atk: number;
+  def: number;
+}
+
+/**
+ * 구역마다 길이 U자로 꺾이는 두 곳을 지키는 중간보스. 순서대로 첫 번째·두 번째 꺾이는 곳에 선다.
+ * 같은 구역의 일반 정예(오크)보다 강하고, 뒤 구역으로 갈수록 기본 능력치 자체도 오른다.
+ */
+export const ELITES: EliteDef[][] = [
+  [{ kind: 'slime', name: '거대 슬라임', hp: 200, atk: 12, def: 3 }, { kind: 'goblin', name: '고블린 대장', hp: 260, atk: 15, def: 4 }],
+  [{ kind: 'goblin', name: '고블린 대장', hp: 300, atk: 17, def: 5 }, { kind: 'skeleton', name: '해골 저격수', hp: 280, atk: 16, def: 4 }],
+  [{ kind: 'skeleton', name: '해골 저격수', hp: 340, atk: 18, def: 5 }, { kind: 'orc', name: '오크 광전사', hp: 420, atk: 22, def: 8 }],
+  [{ kind: 'orc', name: '오크 광전사', hp: 460, atk: 24, def: 9 }, { kind: 'orc', name: '오크 족장', hp: 540, atk: 27, def: 10 }],
+];
+
+export const ELITE = {
+  xp: 6, // 경험치 배율
+  gold: 8, // 돈 배율
+  knockResist: 0.25, // 넉백을 이만큼만 받는다
+  scale: 1.6, // 그려지는 크기
 };
 
 /** 구역이 깊어질수록 적이 강해진다. */
@@ -144,38 +308,48 @@ export const RARITY: Record<Rarity, { name: string; color: string; mult: number;
 const MATERIALS = ['낡은', '강철', '미스릴', '용비늘', '군주의'];
 const ACCESSORY_NOUNS = ['반지', '부적', '목걸이'];
 
-export function rollRarity(rng: () => number, boss: boolean): Rarity {
-  if (boss) return rng() < 0.5 ? 'epic' : 'legendary';
+export function rollRarity(rng: () => number, weights: Record<Rarity, number> = DROP_WEIGHTS): Rarity {
   const order: Rarity[] = ['common', 'rare', 'epic', 'legendary'];
-  const total = order.reduce((s, r) => s + RARITY[r].weight, 0);
+  const total = order.reduce((s, r) => s + weights[r], 0);
   let roll = rng() * total;
   for (const r of order) {
-    roll -= RARITY[r].weight;
+    roll -= weights[r];
     if (roll < 0) return r;
   }
   return 'common';
 }
 
-export function makeItem(id: number, zone: number, rng: () => number, boss = false): Item {
+const DROP_WEIGHTS = Object.fromEntries(Object.entries(RARITY).map(([k, v]) => [k, v.weight])) as Record<Rarity, number>;
+
+export function makeItem(id: number, zone: number, rng: () => number, weights?: Record<Rarity, number>): Item {
   const slots: Slot[] = ['weapon', 'armor', 'accessory'];
   const slot = slots[Math.floor(rng() * slots.length)];
-  const rarity = rollRarity(rng, boss);
+  const rarity = rollRarity(rng, weights);
   const m = RARITY[rarity].mult;
   const v = () => 0.85 + rng() * 0.3;
-  const stats: Partial<Stats> = {};
+  const stats: ItemStats = {};
   let noun: string | undefined;
+  const attrRoll = (scale: number) => Math.max(1, Math.round((1 + zone * 1.5) * scale * m * v()));
+  const randomAttr = (keys: AttrKey[]) => keys[Math.floor(rng() * keys.length)];
 
   if (slot === 'weapon') {
     stats.atk = Math.round((3 + zone * 4) * m * v());
+    // 희귀 이상 무기에는 공격 능력치가 붙는다
+    if (rarity !== 'common') stats[randomAttr(['str', 'dex', 'int'])] = attrRoll(0.6);
     if (rarity === 'legendary') stats.crit = 0.05;
   } else if (slot === 'armor') {
     stats.def = Math.round((1.5 + zone * 2) * m * v());
-    stats.maxHp = Math.round((8 + zone * 12) * m * v());
+    stats.vit = attrRoll(1);
     noun = '갑옷';
   } else {
     stats.crit = Math.round((0.02 + 0.01 * zone) * m * v() * 100) / 100;
-    if (rng() < 0.5) stats.atk = Math.round((1 + zone * 1.5) * m * v());
-    else stats.maxHp = Math.round((5 + zone * 8) * m * v());
+    const first = randomAttr(ATTR_KEYS);
+    stats[first] = attrRoll(1.2);
+    // 영웅 이상 장신구는 능력치가 하나 더 붙는다
+    if (rarity === 'epic' || rarity === 'legendary') {
+      const second = randomAttr(ATTR_KEYS.filter((k) => k !== first));
+      stats[second] = attrRoll(0.8);
+    }
     noun = ACCESSORY_NOUNS[Math.floor(rng() * ACCESSORY_NOUNS.length)];
   }
   return { id, slot, rarity, zone, noun, stats };
@@ -193,14 +367,7 @@ export function itemStatText(item: Item): string {
   if (s.def) parts.push(`방어 +${s.def}`);
   if (s.maxHp) parts.push(`체력 +${s.maxHp}`);
   if (s.crit) parts.push(`치명 +${Math.round(s.crit * 100)}%`);
+  for (const k of ATTR_KEYS) if (s[k]) parts.push(`${ATTR_NAMES[k]} +${s[k]}`);
   return parts.join(' ');
 }
 
-/** 장비 비교용 대략적인 점수. */
-export function itemScore(item: Item | undefined): number {
-  if (!item) return 0;
-  const s = item.stats;
-  return (s.atk ?? 0) * 3 + (s.def ?? 0) * 2.5 + (s.maxHp ?? 0) * 0.3 + (s.crit ?? 0) * 300;
-}
-
-export const SLOT_NAMES: Record<Slot, string> = { weapon: '무기', armor: '방어구', accessory: '장신구' };
