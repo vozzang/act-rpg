@@ -1,0 +1,9 @@
+Slime (Slime.blend / Slime.fbx, 2017)
+
+Author: PinkCannon (Sketchfab, "Slime")
+License: Creative Commons Zero, CC0 1.0 Universal (public domain)
+https://creativecommons.org/publicdomain/zero/1.0/
+
+Converted to glTF (GLB) for this game: rebuilt materials from the included body / eyes / tooth textures
+(green body for normal slimes, purple body for the 거대 슬라임 mid-boss) and kept the IDLE, ROAM and
+Attack animations.

@@ -42,7 +42,7 @@ const MODELS = {
   ham: 'food/whole-ham', apple: 'food/apple', grapes: 'food/grapes', wine: 'food/wine-red',
 } as const;
 /** 'dragon'(최종 보스)은 Collada 파일이라 따로 불러온다 (loadDragon). 'goblinKeeper'(첫 문지기)도 크기를 맞춰야 해서 따로 (loadGoblin) */
-type ModelKey = keyof typeof MODELS | 'dragon' | 'goblinKeeper' | UacpKey;
+type ModelKey = keyof typeof MODELS | 'dragon' | 'goblinKeeper' | UacpKey | 'slime' | 'slimePurple';
 
 /**
  * Quaternius "Ultimate Animated Character Pack" (CC0) 캐릭터: 구역별 몬스터. 키가 약 3.1이라 불러올 때 Kenney 캐릭터 키로 줄인다.
@@ -51,6 +51,8 @@ type ModelKey = keyof typeof MODELS | 'dragon' | 'goblinKeeper' | UacpKey;
 const UACP = {
   uPug: 'Pug', uGoblin: 'Goblin_Male', uGoblinF: 'Goblin_Female', uPirate: 'Pirate_Male', uNinja: 'Ninja_Male',
   uViking: 'Viking_Male', uWitch: 'Witch', uKnight: 'Knight_Male', uZombie: 'Zombie_Male', uKnightGold: 'Knight_Golden_Male', uWizard: 'Wizard',
+  // 중간보스·문지기 전용
+  uElf: 'Elf', uVikingF: 'Viking_Female', uNinjaSand: 'Ninja_Sand', uKnightGoldF: 'Knight_Golden_Female',
 } as const;
 type UacpKey = keyof typeof UACP;
 /** 게임이 부르는 동작 이름 → 이 팩의 클립 이름 (달리기·도약 클립이 없어 걷기로 대신한다) */
@@ -61,6 +63,7 @@ const UACP_ANIMS = {
 type Model = { scene: THREE.Object3D; animations: THREE.AnimationClip[] };
 
 const U = 1 / TILE; // 월드 단위 → 3D 단위
+const SQUASH_TIME = 0.35; // 죽는 동작이 없는 적(슬라임)이 찌그러져 사라지는 시간
 const PITCH = THREE.MathUtils.degToRad(56); // 카메라가 내려다보는 각도
 const CAM_DIST = 11.5; // 카메라와 캐릭터 사이 거리
 const CHAR_SCALE = 1.25;
@@ -114,7 +117,17 @@ const uLook = (model: UacpKey, size: number, attack: 'attack-melee-right' | 'hol
   weapons: weapon ? [{ ...U_HAND, ...weapon }] : [],
 });
 
-const ENEMY_LOOKS: Record<Exclude<EnemyKind, 'slime'>, Look> = {
+/**
+ * 슬라임 (Slime.blend를 GLB로 바꾼 것). 동작은 IDLE(대기)·ROAM(이동)·Attack 셋뿐이고 죽는 동작은 없어 찌그러지며 사라진다.
+ * 슬라임은 몸으로 부딪혀 공격해서 공격 상태가 없으므로, Attack은 원작자 안내대로 맞았을 때 움찔하는 동작(hurt)으로 쓴다.
+ */
+const SLIME_LOOK: Look = {
+  model: 'slime', scale: [1, 1, 1], attack: 'attack-melee-right',
+  anims: { idle: 'IDLE', walk: 'ROAM', sprint: 'ROAM', jump: 'ROAM', 'attack-melee-right': 'Attack', 'holding-right': 'Attack', hurt: 'Attack' },
+};
+
+const ENEMY_LOOKS: Record<EnemyKind, Look> = {
+  slime: SLIME_LOOK,
   goblin: uLook('uGoblin', 0.85, 'attack-melee-right', { model: 'sword', scale: 2.6 }),
   hound: uLook('uPug', 0.9, 'attack-melee-right'),
   thrower: uLook('uGoblinF', 0.82, 'holding-left-shoot'),
@@ -143,6 +156,18 @@ const ELITE_LOOKS: Record<string, Look> = {
     weapons: [{ ...SWORD, bone: 'hand_R', pos: [0, 0.6, 0], rot: [0, 0, 0], scale: 11 }],
     anims: { idle: 'Idle.000', walk: 'Walk', sprint: 'Run', 'attack-melee-right': 'Attack.000', 'holding-right': 'Attack.001', jump: 'Run', die: 'Die' },
   },
+  '거대 슬라임': { ...SLIME_LOOK, model: 'slimePurple' }, // 보라색 슬라임
+  // 나머지 중간보스·문지기: Quaternius 캐릭터. 행동(근접·원거리 등)은 data.ts의 kind 그대로이고 모양만 바꾼다
+  // (거대 슬라임은 슬라임 그대로, 고블린 대장은 고블린 모델 그대로)
+  '엘프 저격수': uLook('uElf', 1, 'holding-left-shoot'),
+  '화염 저격수': { ...uLook('uElf', 1, 'holding-left-shoot'), tint: 0xff9a70 },
+  '바이킹 광전사': uLook('uVikingF', 1, 'attack-melee-right', { model: 'spear', scale: 3.6 }),
+  '황금 기사단장': uLook('uKnightGoldF', 1, 'attack-melee-right', { model: 'sword', scale: 3.8 }),
+  '용암 광전사': { ...uLook('uKnightGold', 1, 'attack-melee-right', { model: 'spear', scale: 3.8, glowTip: 0xff5020 }), tint: 0xff9a80 },
+  '협곡의 문지기': uLook('uNinjaSand', 1, 'holding-left-shoot'),
+  '설원의 문지기': { ...uLook('uViking', 1.05, 'attack-melee-right', { model: 'spear', scale: 3.8 }), tint: 0xd8ecff },
+  '요새의 문지기': uLook('uKnight', 1.05, 'attack-melee-right', { model: 'sword', scale: 4 }),
+  '흑룡의 문지기': uLook('uKnightGold', 1.1, 'attack-melee-right', { model: 'spear', scale: 4, glowTip: 0xff3010 }),
 };
 
 type Char = {
@@ -172,9 +197,9 @@ export class World3D {
   private camera: THREE.PerspectiveCamera;
   private sun: THREE.DirectionalLight;
   private models = new Map<ModelKey, Model>();
-  private dying: { root: THREE.Object3D; mixer: THREE.AnimationMixer; until: number }[] = []; // 죽는 모습을 보여 주는 중인 적
+  private dying: { root: THREE.Object3D; mixer: THREE.AnimationMixer; until: number; squash?: THREE.Vector3 }[] = []; // 죽는 모습을 보여 주는 중인 적
   private players = new Map<string, Char>();
-  private enemies = new Map<number, Char | THREE.Mesh>();
+  private enemies = new Map<number, Char>();
   private eliteRings = new Map<number, THREE.Mesh>(); // 중간보스 발밑의 금빛 고리
   private projectiles = new Map<number, THREE.Object3D>();
   private drops = new Map<number, THREE.Object3D>();
@@ -245,6 +270,8 @@ export class World3D {
       this.loadDragon(),
       this.loadGoblin(loader),
       ...(Object.keys(UACP) as UacpKey[]).map((k) => this.loadUacp(loader, k)),
+      this.loadSlime(loader, 'slime', 'slime'),
+      this.loadSlime(loader, 'slimePurple', 'slime_purple'),
     ]);
     this.buildWorld();
   }
@@ -307,6 +334,23 @@ export class World3D {
     const root = new THREE.Group();
     root.add(body);
     this.models.set('goblinKeeper', { scene: root, animations: g.animations });
+  }
+
+  /** 슬라임 모델 (원본이 커서 지름 0.7칸 정도로 줄인다. 뼈대 배율 때문에 정점 크기보다 크게 그려져 실제 화면을 보고 맞춘 값) */
+  private async loadSlime(loader: GLTFLoader, key: 'slime' | 'slimePurple', file: string) {
+    const g = await loader.loadAsync(`${BASE}slime/${file}.glb`);
+    g.scene.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      mesh.castShadow = true;
+      mesh.frustumCulled = false;
+    });
+    const body = new THREE.Group();
+    body.scale.setScalar(0.16);
+    body.add(g.scene);
+    const root = new THREE.Group();
+    root.add(body);
+    this.models.set(key, { scene: root, animations: g.animations });
   }
 
   /** 구역별 몬스터 모델 하나 (키 약 3.1 → Kenney 캐릭터와 비슷한 키로 줄인다) */
@@ -724,11 +768,8 @@ export class World3D {
       let ent = this.enemies.get(e.id);
       if (!ent) {
         const size = e.elite ? ELITE.scale : 1;
-        if (e.kind === 'slime') ent = this.makeSlime(size);
-        else {
-          const look = (e.elite && ELITE_LOOKS[e.elite]) || ENEMY_LOOKS[e.kind];
-          ent = this.makeChar({ ...look, scale: [look.scale[0] * size, look.scale[1] * size, look.scale[2] * size] });
-        }
+        const look = (e.elite && ELITE_LOOKS[e.elite]) || ENEMY_LOOKS[e.kind];
+        ent = this.makeChar({ ...look, scale: [look.scale[0] * size, look.scale[1] * size, look.scale[2] * size] });
         this.enemies.set(e.id, ent);
         if (e.elite) {
           const ring = new THREE.Mesh(
@@ -745,8 +786,7 @@ export class World3D {
         ring.rotation.y = this.clock;
         (ring.material as THREE.MeshBasicMaterial).opacity = 0.55 + 0.3 * Math.sin(this.clock * 4);
       }
-      if ((ent as THREE.Mesh).isMesh) this.updateSlime(ent as THREE.Mesh, e);
-      else this.updateEnemyChar(ent as Char, e, dt);
+      this.updateEnemyChar(ent, e, dt);
     }
     for (const [id, ent] of this.enemies) if (!seen.has(id)) {
       this.enemies.delete(id);
@@ -759,14 +799,22 @@ export class World3D {
       // 화면 안에서 사라졌으면 죽은 것: 쓰러지는 모습을 보여 주고 치운다 (멀어져서 빠진 적은 바로 치운다)
       const { sx, sy } = this.project3(ch.root?.position.x ?? 0, 0, ch.root?.position.z ?? 0);
       const onScreen = sx > -50 && sx < VIEW_W + 50 && sy > -50 && sy < VIEW_H + 50;
-      if (ch.root && onScreen && ch.actions.has('die')) {
+      if (onScreen && ch.actions.has('die')) {
         this.flash(ch, false);
         this.play(ch, 'die', true);
         this.dying.push({ root: ch.root, mixer: ch.mixer, until: this.clock + ch.actions.get('die')!.getClip().duration + 0.8 });
-      } else this.scene.remove(ch.root ?? (ent as THREE.Mesh));
+      } else if (onScreen) {
+        // 죽는 동작이 없는 모델(슬라임): 납작하게 찌그러지며 사라진다
+        this.flash(ch, false);
+        this.dying.push({ root: ch.root, mixer: ch.mixer, until: this.clock + SQUASH_TIME, squash: ch.root.scale.clone() });
+      } else this.scene.remove(ch.root);
     }
     this.dying = this.dying.filter((d) => {
       d.mixer.update(dt);
+      if (d.squash) {
+        const k = Math.max(0, (d.until - this.clock) / SQUASH_TIME); // 1 → 0
+        d.root.scale.set(d.squash.x * (1.5 - 0.5 * k), d.squash.y * k * k, d.squash.z * (1.5 - 0.5 * k));
+      }
       if (this.clock < d.until) return true;
       this.scene.remove(d.root);
       return false;
@@ -774,11 +822,13 @@ export class World3D {
   }
 
   private updateEnemyChar(ch: Char, e: EnemyView, dt: number) {
-    const moved = this.placeChar(ch, e.x, e.y, e.aim, (e.z * U) * 0.6);
+    const moved = this.placeChar(ch, e.x, e.y, e.aim, (e.z * U) * (e.kind === 'slime' ? 1.5 : 0.6)); // 슬라임은 통통 튀어 오른다
     const blink = e.hurt > 0 || (e.state === 'windup' && Math.floor(this.clock * 12) % 2 === 0);
     // 냉기 파동으로 느려진 적은 푸르게 언 빛
     if (!blink && e.slow > 0) this.flash(ch, true, 0x4a90ff);
     else this.flash(ch, blink, e.hurt > 0 ? 0xffffff : 0xff3020);
+    // 맞은 순간 움찔하는 동작이 있는 모델(슬라임)은 그 동작을 한 번 보여준다 (hurt는 맞으면 0.12초에서 줄어든다)
+    if (e.hurt > 0.08 && ch.actions.has('hurt') && ch.current !== 'hurt') this.play(ch, 'hurt', true);
     if (this.clock >= ch.oneShotUntil) {
       if (e.state === 'attack') this.play(ch, ch.attack, true);
       else if (e.state === 'charge') this.play(ch, 'sprint');
@@ -787,24 +837,6 @@ export class World3D {
       else this.play(ch, moved > 0.002 ? 'walk' : 'idle');
     }
     ch.mixer.update(dt * (e.slow > 0 ? 0.5 : 1));
-  }
-
-  private makeSlime(size = 1): THREE.Mesh {
-    const mesh = new THREE.Mesh(
-      new THREE.SphereGeometry(0.42 * size, 16, 12),
-      new THREE.MeshStandardMaterial({ color: 0x66dd66, roughness: 0.3, transparent: true, opacity: 0.9 }),
-    );
-    mesh.castShadow = true;
-    this.scene.add(mesh);
-    return mesh;
-  }
-
-  private updateSlime(mesh: THREE.Mesh, e: EnemyView) {
-    const lift = e.z * U * 1.5;
-    const squash = lift > 0.05 ? 1.15 : 0.85;
-    mesh.position.set(e.x * U, 0.3 * squash * (e.elite ? ELITE.scale : 1) + lift, e.y * U);
-    mesh.scale.set(1 / Math.sqrt(squash), squash * 0.75, 1 / Math.sqrt(squash));
-    (mesh.material as THREE.MeshStandardMaterial).emissive.setHex(e.hurt > 0 ? 0x666666 : e.slow > 0 ? 0x2a5aa0 : 0x000000);
   }
 
   private syncProjectiles(s: Snapshot) {

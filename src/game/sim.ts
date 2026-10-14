@@ -969,7 +969,7 @@ export class Sim {
       for (const off of e.elite ? [-0.25, 0, 0.25] : [0]) this.projectiles.push(this.enemyProjectile(e, 'iceOrb', toTarget + off, 230, 1.9, e.atk));
       e.timer = 2.6 + this.rng() * 0.6;
     } else {
-      // 중간보스(해골 저격수 등)는 3발을 부채꼴로 쏜다. 투척병은 돌을 더 높이 던진다
+      // 중간보스(엘프 저격수 등)는 3발을 부채꼴로 쏜다. 투척병은 돌을 더 높이 던진다
       const rock = e.kind === 'thrower';
       for (const off of e.elite ? [-0.22, 0, 0.22] : [0]) {
         const p = this.enemyProjectile(e, rock ? 'rock' : 'enemyArrow', toTarget + off, rock ? 260 : 300, 1.6, e.atk);

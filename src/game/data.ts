@@ -301,9 +301,9 @@ export interface EliteDef {
  */
 export const ELITES: EliteDef[][] = [
   [{ kind: 'slime', name: '거대 슬라임', hp: 200, atk: 12, def: 3 }, { kind: 'goblin', name: '고블린 대장', hp: 260, atk: 15, def: 4 }],
-  [{ kind: 'goblin', name: '고블린 대장', hp: 300, atk: 17, def: 5 }, { kind: 'skeleton', name: '해골 저격수', hp: 280, atk: 16, def: 4 }],
-  [{ kind: 'skeleton', name: '해골 저격수', hp: 340, atk: 18, def: 5 }, { kind: 'orc', name: '오크 광전사', hp: 420, atk: 22, def: 8 }],
-  [{ kind: 'orc', name: '오크 광전사', hp: 460, atk: 24, def: 9 }, { kind: 'orc', name: '오크 족장', hp: 540, atk: 27, def: 10 }],
+  [{ kind: 'goblin', name: '고블린 대장', hp: 300, atk: 17, def: 5 }, { kind: 'skeleton', name: '엘프 저격수', hp: 280, atk: 16, def: 4 }],
+  [{ kind: 'skeleton', name: '엘프 저격수', hp: 340, atk: 18, def: 5 }, { kind: 'orc', name: '바이킹 광전사', hp: 420, atk: 22, def: 8 }],
+  [{ kind: 'orc', name: '바이킹 광전사', hp: 460, atk: 24, def: 9 }, { kind: 'orc', name: '황금 기사단장', hp: 540, atk: 27, def: 10 }],
   [{ kind: 'orc', name: '용암 광전사', hp: 500, atk: 25, def: 10 }, { kind: 'skeleton', name: '화염 저격수', hp: 420, atk: 22, def: 8 }],
 ];
 
