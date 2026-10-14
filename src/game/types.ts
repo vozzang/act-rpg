@@ -103,6 +103,7 @@ export interface Enemy extends Body {
   kind: EnemyKind;
   zone: number;
   elite: string | null; // 중간보스면 그 이름 (예: '고블린 대장')
+  gate: number | null; // 문지기면 지키는 문 번호 (쓰러뜨리면 그 문이 열린다)
   active: boolean;
   aim: number; // 바라보는 방향
   hp: number;
@@ -193,17 +194,28 @@ export type GameEvent =
 export type GameStatus = 'playing' | 'victory' | 'defeat';
 
 /** 네트워크로 전송되고 렌더러가 그리는 상태. 플레이어들 근처의 엔티티만 담는다. */
+/** 화면에 필요한 적 정보만 (네트워크로 보내는 양을 줄이려고 공격력·경험치·AI 내부 값 등은 뺀다) */
+export type EnemyView = Pick<Enemy,
+  'id' | 'kind' | 'elite' | 'x' | 'y' | 'r' | 'aim' | 'hp' | 'maxHp' | 'hurt' | 'stun' | 'slow' | 'taunt' | 'state' | 'timer' | 'z' | 'tx' | 'ty'>;
+
+/** 화면에 필요한 떨어진 물건 정보만 (돈 액수·튀는 속도는 빼고, 장비는 이름·수치를 보여줘야 하므로 남긴다) */
+export type DropView = Pick<Drop, 'id' | 'kind' | 'x' | 'y' | 'z' | 'item'>;
+
+/** 화면에 필요한 투사체 정보만 */
+export type ProjectileView = Pick<Projectile, 'id' | 'kind' | 'x' | 'y' | 'z' | 'vx' | 'vy' | 'vz' | 'r' | 'life' | 'aoe'>;
+
 export interface Snapshot {
   tick: number;
   zone: number;
   status: GameStatus;
   players: Player[];
-  enemies: Enemy[];
-  projectiles: Projectile[];
-  drops: Drop[];
+  enemies: EnemyView[];
+  projectiles: ProjectileView[];
+  drops: DropView[];
   shops: Shop[];
   events: GameEvent[];
   boss: { hp: number; maxHp: number } | null;
+  gates: boolean[]; // 문마다 열렸는지 ([z - 1] = z구역 출구)
 }
 
 export interface LobbyPlayer {

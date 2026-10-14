@@ -21,13 +21,14 @@ const INFO_H = 76;
 /** 아이템 상자 칸 단축키 (GameScene.readHotkeys와 같은 순서) */
 const SLOT_KEYS = ['5', '6', '7', '8', '9', '0'];
 /** 스킬 칸에 표시할 키: 키보드 / 게임패드 (GameScene.readInput의 배치와 같다) */
-const SKILL_LABELS = { kbm: ['1', '2', '3', '4'], pad: ['A', 'B', 'Y', 'RT'] };
+const SKILL_LABELS = { kbm: ['1', '2', '3', '4'], pad: ['A', 'B', 'Y', 'RT'], touch: ['', '', '', ''] };
 const CONTROLS = {
   kbm: '이동 WASD·방향키  공격 좌클릭·Z\n스킬 1~4 (우클릭·X = 1번)  줍기·상점 E\n상자 5~0  음식 Q·R  능력치 Shift+1~4  메뉴 I  지도 Tab',
   pad: '이동 왼쪽 스틱  조준 오른쪽 스틱(안 쓰면 자동)\n공격 X  스킬 A·B·Y·RT  줍기·상점 LT\n음식 LB·RB  캐릭터 메뉴 Menu  지도 View',
+  touch: '', // 터치 화면에서는 버튼이 그 자리를 쓴다
 };
 
-export type Device = 'kbm' | 'pad';
+export type Device = 'kbm' | 'pad' | 'touch';
 
 type Rect = { x: number; y: number; w: number; h: number };
 type Tip = { text: string; x: number; y: number };
@@ -174,7 +175,7 @@ export class Hud {
 
     const hasPoints = me.points > 0;
     this.pointsText
-      .setText(`능력치 포인트 ${me.points}  (${this.device === 'pad' ? 'Menu 버튼: 캐릭터 메뉴' : 'Shift+1~4 또는 클릭'})`)
+      .setText(`능력치 포인트 ${me.points}  (${this.device === 'pad' ? 'Menu 버튼: 캐릭터 메뉴' : this.device === 'touch' ? '아래 버튼을 누르세요' : 'Shift+1~4 또는 클릭'})`)
       .setVisible(hasPoints)
       .setAlpha(0.75 + 0.25 * Math.sin(this.scene.time.now / 150));
     for (const b of this.attrButtons) b.setVisible(hasPoints);

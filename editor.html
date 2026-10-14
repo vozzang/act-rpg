@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>맵 편집기 · Act RPG</title>
+  <style>
+    :root { --bg: #0f1522; --panel: #1a2336; --line: #2c3a56; --text: #e8ecf4; --muted: #8d9ab3; --accent: #5aa8ff; --warn: #ffb04a; --ok: #6ad88a; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 13px "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; overflow: hidden; }
+    #app { display: grid; grid-template-columns: 250px 1fr; height: 100%; }
+    #side { background: var(--panel); border-right: 1px solid var(--line); padding: 12px; overflow-y: auto; }
+    #side h1 { font-size: 17px; margin: 0 0 2px; }
+    #side h2 { font-size: 12px; color: var(--muted); font-weight: 600; margin: 14px 0 6px; }
+    .tools { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+    .tools button, .btn { padding: 6px 6px; border-radius: 6px; border: 1px solid var(--line); background: #24314c; color: var(--text);
+      font: inherit; cursor: pointer; text-align: left; display: flex; align-items: center; gap: 6px; }
+    .tools button:hover, .btn:hover { border-color: var(--accent); }
+    .tools button.on { background: var(--accent); color: #0b1220; border-color: var(--accent); font-weight: 700; }
+    .tools .key { margin-left: auto; font-size: 10px; opacity: 0.6; }
+    .sw { width: 12px; height: 12px; border-radius: 3px; flex: none; border: 1px solid #0006; }
+    .row { display: flex; gap: 4px; margin-top: 4px; }
+    .row > * { flex: 1; }
+    .btn.primary { background: var(--accent); color: #0b1220; font-weight: 700; justify-content: center; }
+    .btn { justify-content: center; }
+    select, input { background: #0e1420; color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 5px; font: inherit; min-width: 0; }
+    #problems { list-style: none; padding: 0; margin: 0; font-size: 12px; line-height: 1.5; }
+    #problems li { color: var(--warn); padding: 2px 0; }
+    #problems li.ok { color: var(--ok); }
+    .help { color: var(--muted); font-size: 11.5px; line-height: 1.6; }
+    #main { position: relative; overflow: hidden; }
+    canvas { display: block; }
+    #status { position: absolute; left: 0; right: 0; bottom: 0; padding: 5px 10px; background: #0d1420e0; color: var(--muted); font-size: 12px; display: flex; gap: 18px; }
+    #saved { margin-left: auto; }
+    #toast { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); background: #24314c; border: 1px solid var(--accent); padding: 8px 14px; border-radius: 8px; opacity: 0; transition: opacity 0.2s; pointer-events: none; }
+    #toast.show { opacity: 1; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <aside id="side">
+      <h1>맵 편집기</h1>
+      <div class="help">모든 플레이어가 이 맵을 플레이합니다.</div>
+
+      <h2>지형 (끌어서 칠하기)</h2>
+      <div class="tools" id="terrain-tools"></div>
+      <div class="row" style="align-items:center"><span class="help">붓 크기</span><input id="brush" type="range" min="1" max="7" value="1" /><span id="brush-v">1</span></div>
+
+      <h2>배치</h2>
+      <div class="tools" id="object-tools"></div>
+
+      <h2>보기</h2>
+      <div class="row"><button class="btn primary" id="view3d">3D로 보기 (Tab)</button></div>
+      <div class="help">편집 중인 맵을 게임과 같은 3D 화면으로 둘러봅니다. 2D에서 더블클릭하면 그 자리를 봅니다.</div>
+
+      <h2>파일</h2>
+      <div class="row"><button class="btn primary" id="save">저장 (Ctrl+S)</button></div>
+      <div class="row"><select id="cls"><option value="swordsman">검사</option><option value="dwarf">수호자</option><option value="elf">궁수</option><option value="gnome">마법사</option></select><button class="btn" id="play">테스트 플레이</button></div>
+      <div class="row"><button class="btn" id="undo">되돌리기</button><button class="btn" id="redo">다시 하기</button></div>
+      <div class="row"><button class="btn" id="download">내려받기</button><button class="btn" id="upload">불러오기</button></div>
+      <div class="row"><input id="seed" type="number" value="1" title="시드" /><button class="btn" id="generate">자동 생성</button></div>
+      <div class="row"><button class="btn" id="revert">저장된 맵으로 되돌리기</button></div>
+      <input id="file" type="file" accept=".json,application/json" hidden />
+
+      <h2>검사</h2>
+      <ul id="problems"></ul>
+
+      <h2>조작</h2>
+      <div class="help">
+        왼쪽 클릭: 칠하기·놓기 · 오른쪽 클릭: 그 자리 물건 지우기<br />
+        선택 도구로 물건을 끌어 옮기고 Delete로 지웁니다<br />
+        휠·트랙패드: 화면 이동 (Shift+휠은 가로) · 방향키도 이동<br />
+        Ctrl(⌘)+휠·트랙패드 집기·+/-: 확대·축소<br />
+        빈 곳을 끌기(선택 도구) · Space+끌기 · 가운데 버튼: 화면 이동<br />
+        Ctrl+Z / Ctrl+Shift+Z: 되돌리기 / 다시 하기<br />
+        문: 열려 있는 세로 통로를 누르면 그 통로를 막는 문이 생깁니다 (다시 누르면 없앰). 구역마다 출구 문 1개, 문지기 1명 이상이 필요합니다.<br />
+        구역 경계(노란 선)와 맵 크기는 지금은 고정입니다.
+      </div>
+    </aside>
+    <main id="main">
+      <canvas id="cv"></canvas>
+      <div id="status"><span id="pos"></span><span id="counts"></span><span id="saved"></span></div>
+      <div id="toast"></div>
+    </main>
+  </div>
+  <script type="module" src="/src/editor/editor.ts"></script>
+</body>
+</html>

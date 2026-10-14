@@ -1,0 +1,10 @@
+Goblin (goblin-FINAL.blend)
+
+Model: Goblin
+Author: Čestmír Dammer
+Idea: Torben Wiechmann
+Project: www.kelgar.org
+License: CC0 Public Domain
+
+Converted to glTF (GLB) for this game: kept the Idle.000, Walk, Run, Attack.000, Attack.001 and Die actions,
+rebuilt the material from the packed goblin texture and normal map.

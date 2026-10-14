@@ -7,7 +7,7 @@
 //   출발 ━━━━━━━━┓ ┏━━━━━━━━━━━━ ┓ ...
 //   ┏━━━━━━━━━━┛ ┗━━━━━━━━━━┓   
 //   ┗━━━━━━━━━━━━━━━━━━━━━━━┛   (1구역: 위→아래, 2구역: 아래→위, ...)
-import { ELITES, TILE } from './data';
+import { ELITES, GATE_KEEPERS, TILE } from './data';
 import type { EnemyKind } from './types';
 
 // 장애물 (지나갈 수 없음)
@@ -15,6 +15,7 @@ export const T_FLOOR = 0;
 export const T_TREE = 1;
 export const T_ROCK = 2;
 export const T_SHOP = 3; // 상점 가판대 (지나갈 수 없고, 그림은 렌더러가 따로 그린다)
+export const T_GATE = 4; // 구역 출구의 철문. 그 구역의 문지기를 쓰러뜨리면 바닥(T_FLOOR)으로 바뀐다
 
 // 바닥 무늬 (지나갈 수 있음, 그리기 전용)
 export const G_GRASS = 0;
@@ -40,6 +41,15 @@ export interface Spawn {
   y: number;
   zone: number;
   elite?: number; // 중간보스면 ELITES[zone - 1]의 몇 번째인지
+  gate?: number; // 문지기면 지키는 문 번호 (Level.gates)
+}
+
+/** 구역 출구를 막는 문. 문지기(GATE_KEEPERS)를 쓰러뜨리면 열린다. */
+export interface Gate {
+  tx: number; // 문이 있는 타일 열
+  ty0: number; // 막는 칸 (ty0 ~ ty1)
+  ty1: number;
+  zone: number; // 이 문이 출구인 구역 (4구역 문은 보스 방 입구)
 }
 
 export interface Level {
@@ -52,6 +62,7 @@ export interface Level {
   arenaTx: number;
   arenaCenter: { x: number; y: number };
   shops: { x: number; y: number; zone: number }[]; // 상인 위치 (월드 좌표)
+  gates: Gate[]; // [z - 1] = z구역 출구
   start: { x: number; y: number };
 }
 
@@ -90,10 +101,12 @@ export function buildLevel(seed: number): Level {
   const zoneStartsTx = Array.from({ length: zones }, (_, z) => START_W + z * ZONE_W);
   const zoneOfTxRaw = (tx: number) => zoneStartsTx.reduce((z, sx, i) => (tx >= sx ? i + 1 : z), 1);
 
-  // 1) 전부 막아 두고 길만 판다. 앞쪽 구역은 숲, 깊은 구역은 바위가 많다
+  // 1) 전부 막아 두고 길만 판다. 앞쪽 구역은 숲, 4구역은 바위가 많다
   for (let x = 0; x < w; x++)
     for (let y = 0; y < h; y++) {
-      const rockChance = x >= arenaTx ? 1 : zoneOfTxRaw(x) >= 3 ? 0.6 : 0.12;
+      // 3구역 설원은 눈 덮인 침엽수림에 바위가 섞이고, 4구역 요새는 바위투성이
+      const zone = zoneOfTxRaw(x);
+      const rockChance = x >= arenaTx ? 1 : zone === 4 ? 0.6 : zone === 3 ? 0.3 : 0.12;
       tiles[at(x, y)] = rng() < rockChance ? T_ROCK : T_TREE;
     }
 
@@ -164,7 +177,7 @@ export function buildLevel(seed: number): Level {
       }
     }
     // 통로 안의 나무·바위 덤불 (길에서 떨어진 곳에만)
-    const blockType = z >= 2 ? T_ROCK : T_TREE;
+    const blockType = z >= 3 ? T_ROCK : T_TREE; // 4구역만 바위 덤불
     for (let c = 0; c < 10 + z * 2; c++) {
       const lane = Math.floor(rng() * LANES);
       const cx = zs + 2 + Math.floor(rng() * (ZONE_W - 4));
@@ -201,20 +214,27 @@ export function buildLevel(seed: number): Level {
     shops.push({ x: (tx + 0.5) * TILE, y: (ty + 0.5) * TILE, zone: zoneOfTxRaw(tx) });
   }
 
-  // 6) 몬스터 무리: 구역마다 길을 따라 고르게 (들어오자마자는 비워 둔다)
+  // 6) 문: 구역마다 출구(다음 구역 입구, 4구역은 보스 방 입구)를 막는다. 막는 칸은 맨 끝(8단계)에 채운다
+  const gates: Gate[] = Array.from({ length: zones }, (_, i) => {
+    const tx = i + 1 < zones ? zoneStartsTx[i + 1] : arenaTx;
+    const lane = i + 1 < zones ? ((i + 1) % 2 === 0 ? 0 : 2) : exitLane; // 다음 구역이 들어오는 줄
+    return { tx, ty0: laneTop(lane), ty1: laneTop(lane) + LANE_H - 1, zone: i + 1 };
+  });
+
+  // 7) 몬스터 무리: 구역마다 길을 따라 고르게 (들어오자마자는 비워 둔다)
   const spawns: Spawn[] = [];
   const free = (x: number, y: number) => inMap(x, y) && tiles[at(x, y)] === T_FLOOR;
   const world = (t: number) => (t + 0.5) * TILE;
   for (let z = 1; z <= zones; z++) {
     const path = paths[z];
-    const packs = 9 + z;
+    const packs = 14 + 2 * z; // 1구역 16무리 ~ 4구역 22무리
     const skip = 10;
     for (let k = 0; k < packs; k++) {
       const p = path[Math.floor(skip + ((k + rng() * 0.6) / packs) * (path.length - skip - 4))];
       const px = Math.round(p.x);
       let py = Math.round(p.y + (rng() - 0.5) * 4);
       if (!free(px, py)) py = Math.round(p.y);
-      const n = 2 + Math.floor(rng() * (z >= 3 ? 3 : 2));
+      const n = 3 + Math.floor(rng() * (z >= 3 ? 3 : 2)); // 무리당 3~4마리 (3구역부터 3~5마리)
       for (let i = 0; i < n; i++) {
         const sx = px + Math.round((rng() - 0.5) * 3);
         const sy = py + Math.round((rng() - 0.5) * 3);
@@ -222,16 +242,16 @@ export function buildLevel(seed: number): Level {
         spawns.push({ kind: pick(rng, ZONE_POOLS[z - 1]), x: world(tx), y: world(ty), zone: z });
       }
     }
-    // 구역 출구를 지키는 정예 몬스터
-    const ep = path[path.length - 4];
-    spawns.push({ kind: 'orc', x: world(Math.round(ep.x)), y: world(Math.round(ep.y)), zone: z });
+    // 구역 출구의 문 앞을 지키는 문지기
+    const g = gates[z - 1];
+    spawns.push({ kind: GATE_KEEPERS[z - 1].kind, gate: z - 1, x: world(g.tx - 5), y: world(Math.round((g.ty0 + g.ty1) / 2)), zone: z });
     // 꺾이는 두 곳을 지키는 중간보스
     turns[z - 1].forEach((t, i) => {
       spawns.push({ kind: ELITES[z - 1][i].kind, elite: i, x: world(Math.round(t.x)), y: world(Math.round(t.y)), zone: z });
     });
   }
 
-  // 7) 덤불에 갇힌 곳에 생긴 몬스터는 같은 구역의 가장 가까운 길 위로 옮긴다
+  // 8) 덤불에 갇힌 곳에 생긴 몬스터는 같은 구역의 가장 가까운 길 위로 옮긴다
   const startTile = { x: 3, y: Math.round(laneCenter(0)) };
   const reach = reachable(tiles, w, h, startTile.x, startTile.y);
   for (const s of spawns) {
@@ -242,11 +262,14 @@ export function buildLevel(seed: number): Level {
     s.y = world(Math.round(near.y));
   }
 
+  // 9) 문 닫기 (닿을 수 있는 곳 계산은 문이 열린 상태로 했다)
+  for (const g of gates) for (let y = g.ty0; y <= g.ty1; y++) setTile(g.tx, y, T_GATE);
+
   const arenaCenter = { x: acx * TILE, y: acy * TILE };
   spawns.push({ kind: 'boss', x: arenaCenter.x + TILE * 4, y: arenaCenter.y, zone: zones });
 
   return {
-    w, h, tiles, ground, spawns, zoneStartsTx, arenaTx, arenaCenter, shops,
+    w, h, tiles, ground, spawns, zoneStartsTx, arenaTx, arenaCenter, shops, gates,
     start: { x: world(startTile.x), y: world(startTile.y) },
   };
 }
@@ -273,6 +296,12 @@ function reachable(tiles: Uint8Array, w: number, h: number, sx: number, sy: numb
 
 function pick<T>(rng: () => number, arr: T[]): T {
   return arr[Math.floor(rng() * arr.length)];
+}
+
+/** 문을 연다 (막던 칸을 바닥으로). 호스트와 참가자가 각자 자기 맵에 적용한다 */
+export function openGate(level: Level, index: number) {
+  const g = level.gates[index];
+  for (let y = g.ty0; y <= g.ty1; y++) if (level.tiles[y * level.w + g.tx] === T_GATE) level.tiles[y * level.w + g.tx] = T_FLOOR;
 }
 
 export function tileAt(level: Level, tx: number, ty: number): number {

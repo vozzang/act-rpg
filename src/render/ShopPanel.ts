@@ -98,7 +98,8 @@ export class ShopPanel {
     g.fillStyle(0x0d1420, 0.94).fillRoundedRect(X, Y, W, H, 10);
     g.lineStyle(2, 0xc8a050, 0.9).strokeRoundedRect(X, Y, W, H, 10);
     this.title.setText(`상점 · ${shop.zone}구역 ${ZONE_NAMES[shop.zone - 1]}`);
-    this.footer.setText(device === 'pad' ? '방향패드: 고르기     A: 구매     B: 닫기' : '숫자키 1~5 또는 클릭: 구매     E · Esc: 닫기');
+    this.footer.setText(device === 'pad' ? '방향패드: 고르기     A: 구매     B: 닫기'
+      : device === 'touch' ? '줄을 눌러 구매     줍기 버튼 · 멀어지면 닫힘' : '숫자키 1~5 또는 클릭: 구매     E · Esc: 닫기');
     this.goldText.setText(`보유 ${me.gold} G`);
 
     shop.stock.forEach((e, i) => {

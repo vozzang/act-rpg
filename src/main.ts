@@ -231,8 +231,18 @@ function hostStart() {
   startGame(seed, lobby);
 }
 
+/** 모바일: 게임 화면을 전체 화면·가로 고정으로 (지원하는 브라우저에서만, 실패해도 그냥 진행) */
+function enterMobileFullscreen() {
+  if (!('ontouchstart' in window || navigator.maxTouchPoints > 0)) return;
+  document.documentElement.requestFullscreen?.()
+    .then(() => (screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> }).lock?.('landscape'))
+    .catch(() => {});
+}
+
 function startGame(seed: number, players: LobbyPlayer[]) {
   endGame();
+  document.body.classList.add('playing');
+  enterMobileFullscreen();
   session = {
     role, myId, seed, players: players.map((p) => ({ ...p })), host, client,
     backToLobby: () => {
@@ -258,6 +268,7 @@ function startGame(seed: number, players: LobbyPlayer[]) {
 }
 
 function endGame() {
+  document.body.classList.remove('playing');
   game?.destroy(true);
   game = null;
   session = null;
@@ -286,7 +297,18 @@ if (import.meta.env.DEV && autostart && autostart in CLASSES) {
 $('btn-create').onclick = createRoom;
 $('btn-join').onclick = joinRoom;
 $('btn-solo').onclick = startSolo;
+// 개발 중에만: 로비에 맵 편집기 링크 (배포된 사이트에는 편집기가 없다)
+if (import.meta.env.DEV) {
+  const link = document.createElement('a');
+  link.href = './editor.html';
+  link.textContent = '🛠 맵 편집기 (개발용)';
+  link.className = 'hint';
+  link.style.display = 'block';
+  $('menu-error').after(link);
+}
 $('btn-leave').onclick = leave;
+// 참가자는 게임이 네트워크 메시지로 시작돼 자동 전체 화면이 막히므로, 대기실에서 미리 누를 수 있게 한다
+$('btn-fullscreen').onclick = () => document.documentElement.requestFullscreen?.().catch(() => {});
 $('btn-start').onclick = hostStart;
 $('btn-copy').onclick = async () => {
   if (!host) return;

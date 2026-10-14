@@ -137,7 +137,7 @@ export class CharMenu {
     this.detail.setText(this.detailText(me));
     this.footer.setText(device === 'pad'
       ? '방향패드: 고르기     A: 실행     B · Menu: 닫기     (왼쪽 스틱 이동은 그대로 된다)'
-      : '클릭: 실행     I · Esc: 닫기');
+      : device === 'touch' ? '줄을 눌러 실행     메뉴 버튼: 닫기' : '클릭: 실행     I · Esc: 닫기');
   }
 
   private detailText(me: Player): string {

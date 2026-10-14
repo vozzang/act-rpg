@@ -6,9 +6,9 @@
 // 이 장면은 카메라를 움직이지 않으므로 Phaser 좌표가 곧 화면 좌표다.
 import Phaser from 'phaser';
 import { ATTR_KEYS, ATTR_NAMES, CLASSES, ELITE, ENEMIES, INV_SIZE, RARITY, REVIVE_TIME, SHOP, SNAPSHOT_EVERY, TICK_RATE, itemName, itemStatText } from '../game/data';
-import { buildLevel } from '../game/level';
+import { gameLevel } from '../game/world';
 import { Sim } from '../game/sim';
-import type { AttrKey, GameEvent, InputState, Player, Shop, Snapshot } from '../game/types';
+import { EMPTY_INPUT, type AttrKey, type GameEvent, type InputState, type Player, type Shop, type Snapshot } from '../game/types';
 import type { Session } from '../session';
 import { Effects } from './Effects';
 import { CharMenu } from './CharMenu';
@@ -16,6 +16,7 @@ import { Hud, type Device } from './Hud';
 import { MapView } from './MapView';
 import { BTN, PadInput } from './PadInput';
 import { ShopPanel } from './ShopPanel';
+import { TouchControls, isTouchDevice } from './TouchControls';
 import { hex, makeText } from './ui';
 import { World3D } from './World3D';
 
@@ -32,6 +33,7 @@ export class GameScene extends Phaser.Scene {
   private effects!: Effects;
   private shopPanel!: ShopPanel;
   private charMenu!: CharMenu;
+  private touch?: TouchControls; // 터치 기기에서만 만든다
 
   // 호스트
   private acc = 0;
@@ -71,7 +73,7 @@ export class GameScene extends Phaser.Scene {
 
   create() {
     const s = this.session;
-    const level = buildLevel(s.seed);
+    const level = gameLevel();
 
     this.world = new World3D(this.game.canvas, level);
     const destroyWorld = () => this.world.destroy();
@@ -86,6 +88,10 @@ export class GameScene extends Phaser.Scene {
     this.effects = new Effects(this, this.world, s.myId);
     this.shopPanel = new ShopPanel(this, (idx) => this.buy(idx));
     this.charMenu = new CharMenu(this, (attr) => this.allocate(attr), (idx) => this.useSlot(idx));
+    if (isTouchDevice()) {
+      this.touch = new TouchControls(this);
+      this.device = 'touch';
+    }
     for (let i = 0; i < level.shops.length; i++) {
       this.shopLabels.push(makeText(this, 0, 0, '', 13).setOrigin(0.5, 1).setDepth(20).setColor('#ffd040').setStroke('#000', 4));
     }
@@ -95,8 +101,10 @@ export class GameScene extends Phaser.Scene {
     kb.addCapture('SPACE,UP,DOWN,LEFT,RIGHT,TAB');
     this.input.mouse?.disableContextMenu();
     kb.on('keydown', () => (this.device = 'kbm'));
-    this.input.on('pointerdown', () => (this.device = 'kbm'));
-    this.input.on('pointermove', () => {
+    // 터치도 포인터 이벤트로 들어오므로 마우스와 구분한다
+    this.input.on('pointerdown', (p: Phaser.Input.Pointer) => (this.device = p.wasTouch ? 'touch' : 'kbm'));
+    this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
+      if (p.wasTouch) return;
       this.aimMode = 'mouse';
       this.device = 'kbm';
     });
@@ -111,6 +119,7 @@ export class GameScene extends Phaser.Scene {
       s.onRemoteBuy = (id, shop, idx) => this.sim!.buy(id, shop, idx);
       s.onRemoteSlot = (id, idx) => this.sim!.useSlot(id, idx);
       s.onPlayerLeft = (id) => this.sim!.removePlayer(id);
+      if (s.host) this.startBackgroundTicker();
     } else {
       s.onSnap = (snap) => {
         this.prevSnap = this.curSnap;
@@ -128,7 +137,10 @@ export class GameScene extends Phaser.Scene {
     const dt = Math.min(deltaMs / 1000, 0.1);
     this.pad.update(this.input.gamepad?.pad1);
     if (this.pad.touched) this.device = 'pad';
+    if (this.touch?.touched) this.device = 'touch';
     this.hud.setDevice(this.device);
+    this.map.setMinimapVisible(this.device !== 'touch'); // 터치 화면에서는 오른쪽 아래를 버튼이 쓴다
+    this.touch?.setVisible(this.device === 'touch');
     const input = this.readInput();
     this.readHotkeys();
     let snap: Snapshot | undefined;
@@ -136,18 +148,7 @@ export class GameScene extends Phaser.Scene {
 
     if (this.sim) {
       this.sim.setInput(this.session.myId, input);
-      this.acc += dt;
-      while (this.acc >= DT) {
-        this.acc -= DT;
-        this.sim.step(DT);
-        const ev = this.sim.drainEvents();
-        events.push(...ev);
-        this.netEvents.push(...ev);
-        if (this.session.host && this.sim.tick % SNAPSHOT_EVERY === 0) {
-          this.session.host.broadcast({ t: 'snap', s: this.sim.snapshot(this.netEvents) });
-          this.netEvents = [];
-        }
-      }
+      events = this.stepHost(dt);
       snap = this.sim.snapshot([]);
     } else {
       this.sendInput(input);
@@ -163,14 +164,59 @@ export class GameScene extends Phaser.Scene {
     this.world.update(snap, this.session.myId, dt);
     this.drawOverlays(snap);
     this.hud.update(snap, this.me);
-    this.map.update(this.hud.g, snap, this.keys.TAB.isDown, Phaser.Input.Keyboard.JustDown(this.keys.M) || this.pad.pressed(BTN.VIEW));
+    this.map.update(this.hud.g, snap, this.keys.TAB.isDown,
+      Phaser.Input.Keyboard.JustDown(this.keys.M) || this.pad.pressed(BTN.VIEW) || !!this.touch?.consume('map'));
     for (const e of events) this.effects.play(e, snap, this.me);
+    this.touch?.update(this.me); // 버튼 그리기, '방금 눌림' 초기화 (이번 프레임에 다 쓴 뒤에)
 
     if (snap.status !== 'playing') {
       const canReturn = this.session.role !== 'client';
       this.effects.showEnd(snap, canReturn ? this.session.backToLobby : null);
       if (canReturn && (Phaser.Input.Keyboard.JustDown(this.keys.ENTER) || this.pad.pressed(BTN.A))) this.session.backToLobby();
     }
+  }
+
+  /** 호스트: 게임을 dt초만큼 진행하고, 참가자에게 스냅샷을 보낸다. 생긴 이벤트를 돌려준다. */
+  private stepHost(dt: number): GameEvent[] {
+    const sim = this.sim!;
+    const events: GameEvent[] = [];
+    this.acc += dt;
+    while (this.acc >= DT) {
+      this.acc -= DT;
+      sim.step(DT);
+      const ev = sim.drainEvents();
+      events.push(...ev);
+      this.netEvents.push(...ev);
+      if (this.session.host && sim.tick % SNAPSHOT_EVERY === 0) {
+        // 참가자마다 자기 아이템 상자만 담아서 따로 보낸다 (전송량 절약)
+        for (const p of sim.players) {
+          if (p.id !== this.session.myId) this.session.host.send(p.id, { t: 'snap', s: sim.snapshot(this.netEvents, p.id) });
+        }
+        this.netEvents = [];
+      }
+    }
+    return events;
+  }
+
+  /**
+   * 방장 탭이 뒤로 가면(다른 창·최소화) 브라우저가 화면 갱신을 멈춰 모두의 게임이 멈춘다.
+   * 그래서 브라우저가 멈추지 않는 Web Worker 타이머로 그동안 게임 진행과 전송을 이어간다.
+   */
+  private startBackgroundTicker() {
+    const src = 'setInterval(() => postMessage(0), 25);';
+    const worker = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+    let last = performance.now();
+    worker.onmessage = () => {
+      const now = performance.now();
+      const dt = Math.min((now - last) / 1000, 0.25);
+      last = now;
+      if (!document.hidden || !this.ready || !this.sim) return; // 보이는 동안은 update()가 진행한다
+      this.sim.setInput(this.session.myId, EMPTY_INPUT); // 방장 캐릭터는 그동안 멈춰 있는다
+      this.stepHost(dt);
+    };
+    const stop = () => worker.terminate();
+    this.events.once('shutdown', stop);
+    this.events.once('destroy', stop);
   }
 
   // ─── 입력 ─────────────────────────────────────────
@@ -194,6 +240,11 @@ export class GameScene extends Phaser.Scene {
       dx = pad.left.x;
       dy = pad.left.y;
     }
+    const touch = this.touch;
+    if (touch && (touch.move.x || touch.move.y)) {
+      dx = touch.move.x;
+      dy = touch.move.y;
+    }
     const move = this.world.screenDirToWorld(dx, dy);
     const moving = move.x !== 0 || move.y !== 0;
 
@@ -202,8 +253,8 @@ export class GameScene extends Phaser.Scene {
     //  키보드·마우스: 마우스 위치(마우스 모드) > 이동 방향(방향키)
     // 멈춰 있으면 마지막으로 바라본 방향을 유지한다.
     const ptr = this.input.activePointer;
-    if (this.device === 'pad') {
-      if (pad.aiming) {
+    if (this.device === 'pad' || this.device === 'touch') {
+      if (this.device === 'pad' && pad.aiming) {
         const w = this.world.screenDirToWorld(pad.right.x, pad.right.y);
         this.lastAim = Math.atan2(w.y, w.x);
       } else {
@@ -225,12 +276,14 @@ export class GameScene extends Phaser.Scene {
     let attack = false;
     if (!this.uiOpen) {
       if (!k.SHIFT.isDown) [k.ONE, k.TWO, k.THREE, k.FOUR].forEach((key, i) => key.isDown && (skills |= 1 << i));
-      if ((ptr.rightButtonDown() && !blockMouse) || k.X.isDown || k.SPACE.isDown || k.K.isDown) skills |= 1;
+      const mouse = this.device === 'kbm' && !blockMouse; // 터치도 '왼쪽 버튼'으로 잡히므로 마우스일 때만
+      if ((mouse && ptr.rightButtonDown()) || k.X.isDown || k.SPACE.isDown || k.K.isDown) skills |= 1;
+      [0, 1, 2, 3].forEach((i) => touch?.isHeld(`skill${i}` as 'skill0') && (skills |= 1 << i));
       if (pad.held(BTN.A)) skills |= 1;
       if (pad.held(BTN.B)) skills |= 2;
       if (pad.held(BTN.Y)) skills |= 4;
       if (pad.held(BTN.RT)) skills |= 8;
-      attack = (ptr.leftButtonDown() && !blockMouse) || k.Z.isDown || k.J.isDown || pad.held(BTN.X);
+      attack = (mouse && ptr.leftButtonDown()) || k.Z.isDown || k.J.isDown || pad.held(BTN.X) || !!touch?.isHeld('attack');
     }
 
     return {
@@ -239,8 +292,8 @@ export class GameScene extends Phaser.Scene {
       aim: Math.round(this.lastAim * 100) / 100,
       attack,
       skills,
-      pickup: k.E.isDown || k.C.isDown || k.F.isDown || pad.held(BTN.LT),
-      use: (k.Q.isDown || pad.held(BTN.LB) ? 1 : 0) | (k.R.isDown || pad.held(BTN.RB) ? 2 : 0),
+      pickup: k.E.isDown || k.C.isDown || k.F.isDown || pad.held(BTN.LT) || !!touch?.isHeld('interact'),
+      use: (k.Q.isDown || pad.held(BTN.LB) || touch?.isHeld('hp') ? 1 : 0) | (k.R.isDown || pad.held(BTN.RB) || touch?.isHeld('mp') ? 2 : 0),
     };
   }
 
@@ -322,7 +375,7 @@ export class GameScene extends Phaser.Scene {
     const dpad = { x: (pad.pressed(BTN.RIGHT) ? 1 : 0) - (pad.pressed(BTN.LEFT) ? 1 : 0), y: (pad.pressed(BTN.DOWN) ? 1 : 0) - (pad.pressed(BTN.UP) ? 1 : 0) };
 
     // 캐릭터 메뉴
-    if (just(this.keys.I) || pad.pressed(BTN.MENU)) {
+    if (just(this.keys.I) || pad.pressed(BTN.MENU) || this.touch?.consume('menu')) {
       shopPanel.close();
       menu.toggle();
     } else if (menu.isOpen && backPressed) menu.close();
@@ -337,7 +390,7 @@ export class GameScene extends Phaser.Scene {
     // 상점
     const near = this.nearShop(s);
     const itemUnderFoot = me && s.drops.some((d) => d.kind === 'item' && Math.hypot(d.x - me.x, d.y - me.y) < 36);
-    const interact = just(this.keys.E) || just(this.keys.F) || pad.pressed(BTN.LT);
+    const interact = just(this.keys.E) || just(this.keys.F) || pad.pressed(BTN.LT) || !!this.touch?.consume('interact');
     if (shopPanel.openId !== null) {
       const shop = s.shops.find((sh) => sh.id === shopPanel.openId);
       if (!shop || !me || me.dead || Math.hypot(shop.x - me.x, shop.y - me.y) > SHOP.range + 30 || interact || backPressed) {
@@ -491,7 +544,7 @@ export class GameScene extends Phaser.Scene {
       if (!sh) return void t.setVisible(false);
       const { sx, sy } = this.world.toScreen(sh.x, sh.y - 14);
       const open = this.shopPanel.openId === i;
-      t.setText(near?.id === i && !open ? `상점\n[${this.device === 'pad' ? 'LT' : 'E'}] 열기` : '상점').setAlign('center')
+      t.setText(near?.id === i && !open ? `상점\n[${this.device === 'pad' ? 'LT' : this.device === 'touch' ? '줍기' : 'E'}] 열기` : '상점').setAlign('center')
         .setPosition(sx, sy - this.world.heightPx(70)).setVisible(!open);
     });
   }
@@ -529,7 +582,7 @@ export class GameScene extends Phaser.Scene {
     const { sx, sy } = this.world.toScreen(drop.x, drop.y);
     this.hintText
       .setText([
-        `${full ? '상자가 가득 참' : `[${this.device === 'pad' ? 'LT' : 'E'}] 줍기`}  [${RARITY[item.rarity].name}] ${itemName(item, me.cls)}`,
+        `${full ? '상자가 가득 참' : `[${this.device === 'pad' ? 'LT' : this.device === 'touch' ? '줍기 버튼' : 'E'}] 줍기`}  [${RARITY[item.rarity].name}] ${itemName(item, me.cls)}`,
         `${itemStatText(item)}   (상자 ${used}/${INV_SIZE}칸)`,
       ])
       .setColor(full ? '#9a9a9a' : RARITY[item.rarity].color)

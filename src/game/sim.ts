@@ -1,20 +1,21 @@
 // 게임 시뮬레이션. 호스트에서만 실행되고, 클라이언트는 스냅샷을 받아 그리기만 한다.
 import {
-  AGGRO_RANGE, ATTR_EFFECT, ATTR_KEYS, CLASSES, ELITE, ELITES, ENEMIES, FOOD, INV_SIZE, POINTS_PER_LEVEL, REVIVE_TIME, SHOP, SKILL, TILE, ZONE_NAMES,
+  AGGRO_RANGE, TICK_RATE, ATTR_EFFECT, ATTR_KEYS, CLASSES, ELITE, ELITES, ENEMIES, GATE_KEEPERS, FOOD, INV_SIZE, POINTS_PER_LEVEL, REVIVE_TIME, SHOP, SKILL, TILE, ZONE_NAMES,
   deriveStats, makeItem, partyHpScale, type EliteDef, shopItemPrice, totalAttrs, xpForLevel, zoneScale, type AttackDef,
 } from './data';
-import { buildLevel, mulberry32, zoneOfTx, type Level } from './level';
-import { NavField, angleDiff, approach, dist, lineOfSight, moveBody, pointBlocked } from './physics';
+import { mulberry32, openGate, zoneOfTx, type Level } from './level';
+import { gameLevel } from './world';
+import { NavField, angleDiff, approach, dist, lineOfSight, moveBody, pointBlocked, pushBody } from './physics';
 import {
   EMPTY_INPUT,
-  type AttrKey, type Drop, type FoodKind, type Item, type Enemy, type EnemyKind, type GameEvent, type GameStatus, type InputState,
+  type AttrKey, type Drop, type FoodKind, type Item, type Enemy, type EnemyKind, type EnemyView, type ProjectileView, type GameEvent, type GameStatus, type InputState,
   type LobbyPlayer, type Player, type Projectile, type Shop, type Snapshot,
 } from './types';
 
 type ProjectileAttack = Extract<AttackDef, { kind: 'projectile' }>;
 
 const NAV_EVERY = 15; // 길찾기 지도 갱신 주기 (틱)
-const SNAPSHOT_RADIUS = 650; // 플레이어로부터 이 거리 안의 엔티티만 전송
+const SNAPSHOT_RADIUS = 520; // 플레이어로부터 이 거리 안의 엔티티만 전송 (화면 대각선 + 여유)
 
 export class Sim {
   readonly level: Level;
@@ -33,16 +34,23 @@ export class Sim {
   private navs = new Map<string, NavField>();
   private nextId = 1;
   private arenaLocked = false;
+  /** 문마다 열렸는지 ([z - 1] = z구역 출구) */
+  gates: boolean[];
+  private gateNoticeAt = new Map<string, number>(); // 닫힌 문 안내를 너무 자주 띄우지 않도록
   private endTimer = 0;
   private pendingStatus: GameStatus | null = null;
 
-  constructor(seed: number, lobby: LobbyPlayer[]) {
-    this.level = buildLevel(seed);
+  /** seed는 떨어지는 물건 같은 운에만 쓴다. 맵은 모두 같은 맵(gameLevel) */
+  constructor(seed: number, lobby: LobbyPlayer[], level: Level = gameLevel()) {
+    this.level = level;
     this.rng = mulberry32(seed ^ 0x9e3779b9);
+    this.gates = this.level.gates.map(() => false);
     lobby.forEach((lp, i) => this.players.push(this.createPlayer(lp, i)));
     const party = partyHpScale(this.players.length);
     for (const s of this.level.spawns) {
-      const e = this.createEnemy(s.kind, s.zone, party, s.elite === undefined ? undefined : ELITES[s.zone - 1][s.elite]);
+      const elite = s.gate !== undefined ? GATE_KEEPERS[s.gate] : s.elite !== undefined ? ELITES[s.zone - 1][s.elite] : undefined;
+      const e = this.createEnemy(s.kind, s.zone, party, elite);
+      e.gate = s.gate ?? null;
       e.x = s.x;
       e.y = s.y;
       this.enemies.push(e);
@@ -108,7 +116,7 @@ export class Sim {
     const base = elite ?? def;
     const hp = Math.round(base.hp * zs.hp * party);
     return {
-      id: this.nextId++, kind, zone, elite: elite?.name ?? null, active: false,
+      id: this.nextId++, kind, zone, elite: elite?.name ?? null, gate: null, active: false,
       // 몸집이 커져도 타일 한 칸 틈은 지나가야 하므로 충돌 반지름은 15까지만
       x: 0, y: 0, vx: 0, vy: 0, r: elite ? Math.min(15, def.r * 1.25) : def.r, aim: Math.PI,
       hp, maxHp: hp, atk: Math.round(base.atk * zs.atk), def: base.def + zs.def,
@@ -709,9 +717,30 @@ export class Sim {
 
   // ─── 구역 ─────────────────────────────────────────
 
+  private openGate(i: number, keeper: string) {
+    if (this.gates[i]) return;
+    this.gates[i] = true;
+    openGate(this.level, i);
+    // 길찾기 지도를 새로 계산하게 한다 (문 자리가 길이 됐다)
+    for (const nav of this.navs.values()) nav.originTx = -1;
+    const last = i === this.gates.length - 1;
+    this.events.push({ t: 'banner', text: '문이 열렸다', sub: `${keeper} 처치! — ${last ? '이 너머에 흑룡이 기다린다' : `다음 → ${i + 2}구역 ${ZONE_NAMES[i + 1]}`}` });
+  }
+
+  /** 닫힌 문 앞에 선 플레이어에게 문지기를 쓰러뜨리라고 알려준다 */
+  private gateNotice(p: Player) {
+    const ptx = p.x / TILE, pty = Math.floor(p.y / TILE);
+    const g = this.level.gates.find((g, i) => !this.gates[i] && ptx > g.tx - 2 && ptx < g.tx && pty >= g.ty0 && pty <= g.ty1);
+    if (!g) return;
+    if (this.tick - (this.gateNoticeAt.get(p.id) ?? -Infinity) < TICK_RATE * 4) return;
+    this.gateNoticeAt.set(p.id, this.tick);
+    this.events.push({ t: 'notice', pid: p.id, text: '문이 잠겨 있다 — 문지기를 쓰러뜨려야 열린다' });
+  }
+
   private updateZone() {
     const alive = this.players.filter((p) => !p.dead);
     if (alive.length === 0) return;
+    for (const p of alive) this.gateNotice(p);
     const front = alive.reduce((a, b) => (b.x > a.x ? b : a));
     const zone = zoneOfTx(this.level, Math.floor(front.x / TILE));
 
@@ -801,19 +830,22 @@ export class Sim {
       this.endWith('victory', 3);
       return;
     }
+    // 문지기가 여럿이면 모두 쓰러뜨려야 문이 열린다
+    if (e.gate !== null && !this.enemies.some((o) => o !== e && o.gate === e.gate && o.hp > 0)) this.openGate(e.gate, e.elite!);
     // 돈은 항상 떨어진다 (구역이 깊을수록 많이)
     const gold = Math.max(1, Math.round(ENEMIES[e.kind].gold * zoneScale(e.zone).xp * (0.7 + this.rng() * 0.6) * (e.elite ? ELITE.gold : 1)));
     this.spawnDrop({ kind: 'gold', gold }, e.x, e.y);
     if (e.elite) {
       // 중간보스: 좋은 장비 하나와 회복 음식을 반드시 떨어뜨린다
-      this.events.push({ t: 'banner', text: '', sub: `${e.elite} 처치!` });
+      // 문지기는 문이 열리는 배너에 함께 알린다
+      if (e.gate === null) this.events.push({ t: 'banner', text: '', sub: `${e.elite} 처치!` });
       this.spawnDrop({ kind: 'item', item: makeItem(this.nextId++, e.zone, this.rng, SHOP.rarityWeight) }, e.x, e.y);
       this.spawnDrop({ kind: this.rng() < 0.5 ? 'hpFood' : 'mpFood' }, e.x, e.y);
       return;
     }
     if (this.rng() < ENEMIES[e.kind].dropRate) {
       this.spawnDrop({ kind: 'item', item: makeItem(this.nextId++, e.zone, this.rng) }, e.x, e.y);
-    } else if (this.rng() < 0.14) {
+    } else if (this.rng() < 0.1) {
       this.spawnDrop({ kind: this.rng() < 0.5 ? 'hpFood' : 'mpFood' }, e.x, e.y);
     }
   }
@@ -1069,10 +1101,9 @@ export class Sim {
         if (overlap <= 0) continue;
         const wa = a.kind === 'boss' ? 0 : b.kind === 'boss' ? 1 : 0.5;
         const nx = dx / d, ny = dy / d;
-        a.x -= nx * overlap * wa;
-        a.y -= ny * overlap * wa;
-        b.x += nx * overlap * (1 - wa);
-        b.y += ny * overlap * (1 - wa);
+        // 벽 검사를 하며 민다: 그냥 옮기면 무리에 떠밀린 적이 얇은 문(한 칸) 속으로 들어가 반대편으로 빠져나간다
+        pushBody(this.level, a, -nx * overlap * wa, -ny * overlap * wa);
+        pushBody(this.level, b, nx * overlap * (1 - wa), ny * overlap * (1 - wa));
       }
   }
 
@@ -1218,21 +1249,38 @@ export class Sim {
 
   // ─── 스냅샷 ────────────────────────────────────────
 
-  snapshot(events: GameEvent[]): Snapshot {
+  /**
+   * 화면용 상태. viewer를 주면 그 플레이어에게 보낼 것으로 만든다:
+   * 아이템 상자는 자기 것만 필요하므로 다른 플레이어의 상자는 비워서 보낸다.
+   */
+  snapshot(events: GameEvent[], viewer?: string): Snapshot {
     const near = (x: number, y: number) => this.players.some((p) => dist(p.x, p.y, x, y) < SNAPSHOT_RADIUS);
     const r = (v: number) => Math.round(v * 10) / 10;
+    const r2 = (v: number) => Math.round(v * 100) / 100;
     const boss = this.enemies.find((e) => e.kind === 'boss' && e.active);
+    // 화면에 필요한 값만 골라 반올림해서 보낸다 (스냅샷은 초당 20번, 참가자마다 전송된다)
+    const enemyView = (e: Enemy): EnemyView => ({
+      id: e.id, kind: e.kind, elite: e.elite, x: r(e.x), y: r(e.y), r: e.r, aim: r2(e.aim),
+      hp: e.hp, maxHp: e.maxHp, hurt: r2(Math.max(0, e.hurt)), stun: r2(Math.max(0, e.stun)), slow: r2(Math.max(0, e.slow)),
+      taunt: r2(Math.max(0, e.taunt)), state: e.state, timer: r2(e.timer), z: r(e.z), tx: r(e.tx), ty: r(e.ty),
+    });
+    const projView = (p: Projectile): ProjectileView => ({
+      id: p.id, kind: p.kind, x: r(p.x), y: r(p.y), z: r(p.z), vx: r(p.vx), vy: r(p.vy), vz: r(p.vz), r: p.r, life: r2(p.life), aoe: p.aoe,
+    });
     return {
       tick: this.tick,
       zone: this.zone,
       status: this.status,
-      players: this.players.map((p) => ({ ...p, x: r(p.x), y: r(p.y), aim: Math.round(p.aim * 100) / 100 })),
-      enemies: this.enemies.filter((e) => e.active && near(e.x, e.y)).map((e) => ({ ...e, x: r(e.x), y: r(e.y) })),
-      projectiles: this.projectiles.filter((p) => near(p.x, p.y)).map((p) => ({ ...p, x: r(p.x), y: r(p.y), z: r(p.z) })),
-      drops: this.drops.filter((d) => near(d.x, d.y)),
+      players: this.players.map((p) => ({
+        ...p, x: r(p.x), y: r(p.y), aim: r2(p.aim), dashHits: [], inv: viewer && p.id !== viewer ? [] : p.inv,
+      })),
+      enemies: this.enemies.filter((e) => e.active && near(e.x, e.y)).map(enemyView),
+      projectiles: this.projectiles.filter((p) => near(p.x, p.y)).map(projView),
+      drops: this.drops.filter((d) => near(d.x, d.y)).map((d) => ({ id: d.id, kind: d.kind, x: r(d.x), y: r(d.y), z: r(d.z), item: d.item })),
       shops: this.shops.filter((sh) => near(sh.x, sh.y)),
       events,
       boss: boss ? { hp: boss.hp, maxHp: boss.maxHp } : null,
+      gates: this.gates,
     };
   }
 }

@@ -8,7 +8,7 @@ export const VIEW_H = 544;
 export const TICK_RATE = 60;
 export const SNAPSHOT_EVERY = 3; // 60/3 = 초당 20회 전송
 export const REVIVE_TIME = 2;
-export const ZONE_NAMES = ['초록 숲', '고블린 협곡', '해골 묘지', '오크 요새'];
+export const ZONE_NAMES = ['초록 숲', '고블린 협곡', '얼어붙은 설원', '오크 요새'];
 
 // ─── 직업 ────────────────────────────────────────────
 
@@ -130,17 +130,17 @@ export const POINTS_PER_LEVEL = 3;
 
 /** 능력치 1당 효과. 여기만 바꾸면 전체 밸런스가 바뀐다. */
 export const ATTR_EFFECT = {
-  mainAtk: 0.8, // 주 능력치 1당 공격력
-  vitHp: 8, // 체력 1당 최대 HP
-  levelHp: 4, // 레벨당 추가 HP
-  vitDef: 0.25, // 체력 1당 방어
-  strDef: 0.15, // 힘 1당 방어
+  mainAtk: 0.5, // 주 능력치 1당 공격력
+  vitHp: 5, // 체력 1당 최대 HP
+  levelHp: 3, // 레벨당 추가 HP
+  vitDef: 0.2, // 체력 1당 방어
+  strDef: 0.1, // 힘 1당 방어
   dexCrit: 0.004, // 민첩 1당 치명타 확률
   dexHaste: 0.005, // 민첩 1당 공격 속도
   intCdr: 0.008, // 지능 1당 스킬 재사용 가속
   intHeal: 0.01, // 지능 1당 회복량 증가
-  intMp: 5, // 지능 1당 최대 MP
-  intMpRegen: 0.1, // 지능 1당 초당 MP 회복
+  intMp: 3, // 지능 1당 최대 MP
+  intMpRegen: 0.05, // 지능 1당 초당 MP 회복
 };
 
 export const ATTR_DESC: Record<AttrKey, string> = {
@@ -222,11 +222,12 @@ export interface EnemyDef {
   dropRate: number;
 }
 
+// 몬스터가 많은 대신 마리당 경험치·돈·장비 드랍은 낮게 잡았다 (한 판 동안 얻는 총량이 너무 커지지 않도록)
 export const ENEMIES: Record<EnemyKind, EnemyDef> = {
-  slime: { name: '슬라임', r: 13, height: 22, hp: 30, atk: 7, def: 0, speed: 60, xp: 12, gold: 4, dropRate: 0.15 },
-  goblin: { name: '고블린', r: 11, height: 36, hp: 48, atk: 10, def: 2, speed: 105, xp: 20, gold: 6, dropRate: 0.22 },
-  skeleton: { name: '해골 궁수', r: 11, height: 46, hp: 40, atk: 9, def: 1, speed: 55, xp: 26, gold: 8, dropRate: 0.28 },
-  orc: { name: '오크 전사', r: 15, height: 56, hp: 160, atk: 16, def: 6, speed: 70, xp: 60, gold: 25, dropRate: 0.75 },
+  slime: { name: '슬라임', r: 13, height: 22, hp: 40, atk: 9, def: 0, speed: 65, xp: 7, gold: 3, dropRate: 0.09 },
+  goblin: { name: '고블린', r: 11, height: 36, hp: 62, atk: 13, def: 2, speed: 110, xp: 12, gold: 4, dropRate: 0.13 },
+  skeleton: { name: '해골 궁수', r: 11, height: 46, hp: 52, atk: 11, def: 1, speed: 58, xp: 15, gold: 6, dropRate: 0.17 },
+  orc: { name: '오크 전사', r: 15, height: 56, hp: 200, atk: 20, def: 6, speed: 72, xp: 36, gold: 18, dropRate: 0.5 },
   boss: { name: '흑룡', r: 40, height: 110, hp: 3300, atk: 55, def: 12, speed: 85, xp: 0, gold: 0, dropRate: 1 },
 };
 
@@ -279,6 +280,17 @@ export const ELITES: EliteDef[][] = [
   [{ kind: 'orc', name: '오크 광전사', hp: 460, atk: 24, def: 9 }, { kind: 'orc', name: '오크 족장', hp: 540, atk: 27, def: 10 }],
 ];
 
+/**
+ * 구역 출구의 문을 지키는 문지기 (구역마다 하나, [z - 1] = z구역). 쓰러뜨려야 문이 열려 다음 구역으로 갈 수 있다.
+ * 같은 구역의 중간보스보다 한 단계 강하다. 구역 보정과 인원수 보정은 중간보스와 같이 곱해진다.
+ */
+export const GATE_KEEPERS: EliteDef[] = [
+  { kind: 'goblin', name: '숲의 문지기', hp: 430, atk: 17, def: 5 },
+  { kind: 'skeleton', name: '협곡의 문지기', hp: 480, atk: 20, def: 6 },
+  { kind: 'orc', name: '설원의 문지기', hp: 580, atk: 26, def: 9 },
+  { kind: 'orc', name: '흑룡의 문지기', hp: 650, atk: 28, def: 10 }, // 구역 보정 후에도 흑룡보다 약하게,
+];
+
 export const ELITE = {
   xp: 6, // 경험치 배율
   gold: 8, // 돈 배율
@@ -288,12 +300,12 @@ export const ELITE = {
 
 /** 구역이 깊어질수록 적이 강해진다. */
 export function zoneScale(zone: number) {
-  return { hp: 1 + 0.45 * (zone - 1), atk: 1 + 0.35 * (zone - 1), def: zone - 1, xp: 1 + 0.5 * (zone - 1) };
+  return { hp: 1 + 0.6 * (zone - 1), atk: 1 + 0.48 * (zone - 1), def: zone - 1, xp: 1 + 0.5 * (zone - 1) };
 }
 
 /** 인원수가 많을수록 적 체력이 늘어난다. */
 export function partyHpScale(players: number) {
-  return 1 + 0.6 * (players - 1);
+  return 1 + 0.8 * (players - 1);
 }
 
 // ─── 장비 ────────────────────────────────────────────

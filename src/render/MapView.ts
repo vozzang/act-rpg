@@ -2,7 +2,7 @@
 // 3D 카메라와 같은 방향(북쪽이 위, 맵 진행 방향이 오른쪽)으로 위에서 내려다본 모습이다.
 import Phaser from 'phaser';
 import { CLASSES, ENEMIES, TILE, VIEW_H, VIEW_W, ZONE_NAMES } from '../game/data';
-import { G_ROAD, G_STONE, T_FLOOR, type Level } from '../game/level';
+import { G_ROAD, G_STONE, T_FLOOR, T_GATE, zoneOfTx, type Level } from '../game/level';
 import type { Snapshot } from '../game/types';
 import { hex, makeText } from './ui';
 
@@ -25,7 +25,9 @@ export class MapView {
       for (let tx = 0; tx < w; tx++) {
         const t = tiles[ty * w + tx];
         const gr = ground[ty * w + tx];
-        const color = t !== T_FLOOR ? 0x24301e : gr === G_ROAD ? 0xb8a070 : gr === G_STONE ? 0x8a8a90 : 0x5a7a48;
+        const snow = tx < level.arenaTx && zoneOfTx(level, tx) === 3; // 3구역 설원은 하얗게
+        const color = t !== T_FLOOR && t !== T_GATE ? (snow ? 0x6a7680 : 0x24301e)
+          : gr === G_ROAD ? (snow ? 0xa8b4c0 : 0xb8a070) : gr === G_STONE ? 0x8a8a90 : snow ? 0xdde4ea : 0x5a7a48;
         g.fillStyle(color, 1).fillRect(tx * SCALE, ty * SCALE, SCALE, SCALE);
       }
     g.generateTexture('minimap', Math.ceil(w * SCALE), Math.ceil(h * SCALE));
@@ -49,6 +51,14 @@ export class MapView {
     }
   }
 
+  private minimapVisible = true;
+
+  /** 터치 화면에서는 오른쪽 아래를 버튼이 쓰므로 미니맵을 숨긴다 (전체 지도는 지도 버튼으로) */
+  setMinimapVisible(v: boolean) {
+    this.minimapVisible = v;
+    this.minimap.setVisible(v);
+  }
+
   /** 미니맵 바로 위 y좌표 (조작 안내를 그 위에 둔다) */
   get top() {
     return this.minimap.y - this.minimap.displayHeight;
@@ -63,7 +73,7 @@ export class MapView {
 
   /** 매 프레임. g는 HUD 그래픽(미니맵 위 점을 그린다). */
   update(g: Phaser.GameObjects.Graphics, s: Snapshot, holdOpen: boolean, togglePressed: boolean) {
-    this.drawMarkers(g, this.minimap, s, false);
+    if (this.minimapVisible) this.drawMarkers(g, this.minimap, s, false);
     if (togglePressed) this.toggled = !this.toggled;
     const open = holdOpen || this.toggled;
     this.bigMap.setVisible(open);
@@ -83,6 +93,14 @@ export class MapView {
       g.fillStyle(0x000000, 1).fillCircle(m.x, m.y, r + 1.5);
       g.fillStyle(0xffcc33, 1).fillCircle(m.x, m.y, r);
     }
+    // 닫힌 문: 빨간 막대 (문지기를 쓰러뜨리면 사라진다)
+    this.level.gates.forEach((gate, i) => {
+      if (s.gates?.[i]) return;
+      const a = this.pos(img, (gate.tx + 0.5) * TILE, gate.ty0 * TILE);
+      const b = this.pos(img, (gate.tx + 0.5) * TILE, (gate.ty1 + 1) * TILE);
+      g.lineStyle(big ? 6 : 4, 0x000000, 1).lineBetween(a.x, a.y, b.x, b.y);
+      g.lineStyle(big ? 3 : 2, 0xff4040, 1).lineBetween(a.x, a.y, b.x, b.y);
+    });
     const boss = this.pos(img, this.level.arenaCenter.x, this.level.arenaCenter.y);
     const br = big ? 8 : 4;
     g.fillStyle(0x000000, 1).fillCircle(boss.x, boss.y, br + 1.5);

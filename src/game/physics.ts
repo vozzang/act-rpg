@@ -51,6 +51,16 @@ export function moveBody(level: Level, b: Body, dt: number): boolean {
   return blocked;
 }
 
+/** 몸을 (dx, dy)만큼 밀되 벽은 뚫지 않는다 (서로 밀어내기처럼 속도가 아닌 위치를 옮길 때) */
+export function pushBody(level: Level, b: Body, dx: number, dy: number) {
+  const vx = b.vx, vy = b.vy;
+  b.vx = dx;
+  b.vy = dy;
+  moveBody(level, b, 1);
+  b.vx = vx;
+  b.vy = vy;
+}
+
 export function pointBlocked(level: Level, x: number, y: number): boolean {
   return blockedAt(level, Math.floor(x / TILE), Math.floor(y / TILE));
 }

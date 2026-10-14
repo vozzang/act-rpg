@@ -2,7 +2,9 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
   <title>Act RPG</title>
   <style>
     :root {
@@ -53,8 +55,26 @@
     .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; }
     .players { list-style: none; padding: 0; margin: 0; }
     .players li { padding: 8px 0; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; }
-    #game { display: none; position: fixed; inset: 0; background: #000; }
+    #game { display: none; position: fixed; inset: 0; background: #000; touch-action: none; user-select: none; -webkit-user-select: none; }
     #game.active { display: block; }
+    /* 게임 중 휴대폰을 세로로 들면 가로로 돌려 달라고 안내한다 */
+    #rotate { display: none; position: fixed; inset: 0; z-index: 10; background: var(--bg); color: var(--text);
+      align-items: center; justify-content: center; text-align: center; font-size: 18px; padding: 24px; }
+    @media (orientation: portrait) and (pointer: coarse) {
+      body.playing #rotate { display: flex; }
+    }
+    .touch-only { display: none; }
+    @media (pointer: coarse) { .touch-only { display: inline-block; } .kbm-only { display: none; } }
+    /* 가로로 든 휴대폰처럼 낮은 화면에서는 여백을 줄인다 */
+    @media (max-height: 500px) {
+      .screen { padding: 10px; }
+      .box { padding: 16px 18px; }
+      h1 { font-size: 26px; }
+      .sub { margin-bottom: 10px; }
+      .stack > * + * { margin-top: 10px; }
+      .classes { margin: 10px 0; }
+      .card .desc { min-height: 0; }
+    }
     .hint { color: var(--muted); font-size: 13px; margin-top: 14px; line-height: 1.6; }
   </style>
 </head>
@@ -100,10 +120,13 @@
       <ul class="players" id="players"></ul>
       <div class="row" style="margin-top: 18px">
         <button id="btn-leave">나가기</button>
+        <button id="btn-fullscreen" class="touch-only">전체 화면</button>
         <button id="btn-start" class="primary">게임 시작</button>
       </div>
       <p id="room-status" class="hint"></p>
-      <p class="hint">조작: 이동 WASD · 조준 마우스 · 공격 좌클릭(Z) · 스킬 1~4 (우클릭·X = 1번) · 아이템 줍기·상점 E · 음식 먹기 Q·R · 아이템 상자 5~0·클릭(먹기·내려놓기) · 캐릭터 메뉴 I · 지도 Tab(M)<br />
+      <p class="hint touch-only">터치 조작: 화면 왼쪽을 누른 채 끌면 이동 · 오른쪽 아래 큰 버튼 공격 · 그 둘레 작은 버튼 스킬 1~4 (조준은 자동) · 줍기 버튼으로 아이템 줍기·상점 열기 · HP·MP 버튼으로 음식 먹기 · 메뉴 버튼으로 능력치·아이템 상자 · 지도 버튼<br />
+        휴대폰은 가로로 들고 하세요. 쓰러진 동료 옆에 2초간 서 있으면 부활시킬 수 있습니다.</p>
+      <p class="hint kbm-only">조작: 이동 WASD · 조준 마우스 · 공격 좌클릭(Z) · 스킬 1~4 (우클릭·X = 1번) · 아이템 줍기·상점 E · 음식 먹기 Q·R · 아이템 상자 5~0·클릭(먹기·내려놓기) · 캐릭터 메뉴 I · 지도 Tab(M)<br />
         게임패드: 이동 왼쪽 스틱 · 공격 X · 스킬 A·B·Y·RT · 음식 LB·RB · 줍기·상점 LT · 캐릭터 메뉴 Menu · 지도 View (조준은 오른쪽 스틱, 안 쓰면 자동 조준)<br />
         키보드만 쓸 때: 방향키로 이동하면 이동 방향으로 공격합니다.<br />
         스킬은 MP를 씁니다. Lv.1·4·7에 하나씩 배우고 Lv.10에 최종 스킬을 배웁니다.<br />
@@ -113,6 +136,7 @@
   </section>
 
   <div id="game"></div>
+  <div id="rotate"><div>📱↻<br /><br />휴대폰을 가로로 돌려 주세요</div></div>
 
   <script type="module" src="/src/main.ts"></script>
 </body>
