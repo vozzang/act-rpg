@@ -1,0 +1,6 @@
+Ultimate Animated Character Pack (Nov 2019) by Quaternius
+https://quaternius.com
+License: CC0 1.0 Universal (public domain)
+
+Converted from FBX to glTF (GLB) for this game, keeping only the Idle, Walk, Punch,
+Shoot_OneHanded, Defeat and RecieveHit animations.

@@ -8,6 +8,7 @@ import { hex, makeText } from './ui';
 
 const SCALE = 1.2; // 미니맵에서 타일 한 칸의 크기(px)
 const MINIMAP_BOTTOM = 10;
+const MINIMAP_MAX_W = 216; // 미니맵이 이보다 넓으면 줄여서 보여준다 (맵이 길어져도 아이템 상자를 가리지 않게)
 
 export class MapView {
   readonly minimap: Phaser.GameObjects.Image;
@@ -25,16 +26,18 @@ export class MapView {
       for (let tx = 0; tx < w; tx++) {
         const t = tiles[ty * w + tx];
         const gr = ground[ty * w + tx];
-        const snow = tx < level.arenaTx && zoneOfTx(level, tx) === 3; // 3구역 설원은 하얗게
-        const color = t !== T_FLOOR && t !== T_GATE ? (snow ? 0x6a7680 : 0x24301e)
-          : gr === G_ROAD ? (snow ? 0xa8b4c0 : 0xb8a070) : gr === G_STONE ? 0x8a8a90 : snow ? 0xdde4ea : 0x5a7a48;
+        const zone = tx < level.arenaTx ? zoneOfTx(level, tx) : 0;
+        const snow = zone === 3, volcano = zone === 5; // 3구역 설원은 하얗게, 5구역 화산은 검붉게
+        const color = t !== T_FLOOR && t !== T_GATE ? (snow ? 0x6a7680 : volcano ? 0x2a1c18 : 0x24301e)
+          : gr === G_ROAD ? (snow ? 0xa8b4c0 : volcano ? 0x9a5a3a : 0xb8a070) : gr === G_STONE ? 0x8a8a90 : snow ? 0xdde4ea : volcano ? 0x5a4640 : 0x5a7a48;
         g.fillStyle(color, 1).fillRect(tx * SCALE, ty * SCALE, SCALE, SCALE);
       }
     g.generateTexture('minimap', Math.ceil(w * SCALE), Math.ceil(h * SCALE));
     g.destroy();
 
     // 위치 점(HUD, depth 100)보다 아래
-    this.minimap = scene.add.image(VIEW_W - 10, VIEW_H - MINIMAP_BOTTOM, 'minimap').setOrigin(1, 1).setDepth(99).setAlpha(0.9);
+    this.minimap = scene.add.image(VIEW_W - 10, VIEW_H - MINIMAP_BOTTOM, 'minimap').setOrigin(1, 1).setDepth(99).setAlpha(0.9)
+      .setScale(Math.min(1, MINIMAP_MAX_W / (w * SCALE)));
 
     const zoom = (VIEW_W - 60) / (w * SCALE);
     this.bigMap = scene.add.image(VIEW_W / 2, VIEW_H / 2 + 20, 'minimap').setScale(zoom).setDepth(150).setVisible(false);
@@ -44,7 +47,7 @@ export class MapView {
     }
     // 구역 이름은 지도 위쪽 바깥, 보스는 보스 방 위
     const top = this.bigMap.y - this.bigMap.displayHeight / 2 - 8;
-    const zoneLabels = level.zoneStartsTx.map((tx, i) => ({ text: `${i + 1}구역 ${ZONE_NAMES[i]}`, x: (tx + 20) * TILE }));
+    const zoneLabels = level.zoneStartsTx.map((tx, i) => ({ text: `${i + 1}구역 ${ZONE_NAMES[i]}`, x: ((tx + (level.zoneStartsTx[i + 1] ?? level.arenaTx)) / 2) * TILE }));
     for (const l of [...zoneLabels, { text: ENEMIES.boss.name, x: level.arenaCenter.x }]) {
       const m = this.pos(this.bigMap, l.x, 0);
       this.labels.push(makeText(scene, m.x, top, l.text, 13).setOrigin(0.5, 1).setColor('#e8e0c0').setStroke('#000', 4).setDepth(152).setVisible(false));

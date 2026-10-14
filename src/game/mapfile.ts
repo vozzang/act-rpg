@@ -6,7 +6,11 @@ import type { EnemyKind } from './types';
 
 /** 맵에 놓는 몬스터. elite1·elite2는 그 구역의 첫째·둘째 중간보스(ELITES), keeper는 그 구역 출구 문지기(GATE_KEEPERS) */
 export type SpawnType = Exclude<EnemyKind, 'boss'> | 'elite1' | 'elite2' | 'keeper';
-export const SPAWN_TYPES: SpawnType[] = ['slime', 'goblin', 'skeleton', 'orc', 'elite1', 'elite2', 'keeper'];
+export const SPAWN_TYPES: SpawnType[] = [
+  'slime', 'goblin', 'skeleton', 'orc',
+  'hound', 'thrower', 'bandit', 'assassin', 'raider', 'iceWitch', 'darkKnight', 'zombie', 'flameKnight', 'pyromancer',
+  'elite1', 'elite2', 'keeper',
+];
 
 export interface MapFile {
   version: 1;

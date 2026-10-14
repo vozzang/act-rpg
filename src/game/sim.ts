@@ -16,6 +16,8 @@ type ProjectileAttack = Extract<AttackDef, { kind: 'projectile' }>;
 
 const NAV_EVERY = 15; // 길찾기 지도 갱신 주기 (틱)
 const SNAPSHOT_RADIUS = 520; // 플레이어로부터 이 거리 안의 엔티티만 전송 (화면 대각선 + 여유)
+const CHILL_TIME = 2; // 얼음 마녀의 냉기 구슬에 맞으면 이 시간 동안
+const CHILL_SLOW = 0.6; // 이동 속도가 이만큼으로 줄어든다
 
 export class Sim {
   readonly level: Level;
@@ -100,7 +102,7 @@ export class Sim {
       inv: [{ kind: 'hpFood', count: 1 }, { kind: 'mpFood', count: 1 }, ...Array<null>(INV_SIZE - 2).fill(null)],
       stats: { maxHp: 0, atk: 0, def: 0, crit: 0, haste: 0, cdr: 0, maxMp: 0, mpRegen: 0 },
       atkCd: 0, atkAnim: 0, skillCds: [0, 0, 0, 0], dashTime: 0, dashSkill: 0, dashHits: [],
-      guard: 0, guardReduce: 0, atkBuff: 0, mp: 0,
+      guard: 0, guardReduce: 0, atkBuff: 0, chill: 0, mp: 0,
       invuln: 0, dead: false, revive: 0, kills: 0,
     };
     this.recalcStats(p);
@@ -112,7 +114,8 @@ export class Sim {
   /** elite를 주면 그 능력치로 중간보스를 만든다 (ELITES) */
   private createEnemy(kind: EnemyKind, zone: number, party: number, elite?: EliteDef): Enemy {
     const def = ENEMIES[kind];
-    const zs = kind === 'boss' ? zoneScale(1) : zoneScale(zone);
+    // 흑룡은 구역 배율 없이 자기 능력치 그대로
+    const zs = kind === 'boss' ? { hp: 1, atk: 1, def: 0, xp: 1 } : zoneScale(zone);
     const base = elite ?? def;
     const hp = Math.round(base.hp * zs.hp * party);
     return {
@@ -214,6 +217,7 @@ export class Sim {
     for (let i = 0; i < p.skillCds.length; i++) p.skillCds[i] -= dt;
     p.guard -= dt;
     p.atkBuff -= dt;
+    p.chill -= dt;
     p.invuln -= dt;
 
     if (p.dead) {
@@ -237,8 +241,9 @@ export class Sim {
       my /= len;
     }
     const accel = 1800 * dt;
-    p.vx = approach(p.vx, mx * def.speed, accel);
-    p.vy = approach(p.vy, my * def.speed, accel);
+    const speed = def.speed * (p.chill > 0 ? CHILL_SLOW : 1); // 얼음 마녀의 냉기에 맞으면 느려진다
+    p.vx = approach(p.vx, mx * speed, accel);
+    p.vy = approach(p.vy, my * speed, accel);
     p.moving = len > 0.1;
     moveBody(this.level, p, dt);
 
@@ -345,7 +350,7 @@ export class Sim {
   }
 
   private useSkill(p: Player, idx: number) {
-    const ev = (r: number, x = p.x, y = p.y) => this.events.push({ t: 'skill', pid: p.id, idx, x, y, r });
+    const ev = (r: number, x = p.x, y = p.y) => this.events.push({ t: 'skill', pid: p.id, idx, x, y, r, aim: Math.round(p.aim * 100) / 100 });
     const elfArrow = CLASSES.elf.attack as ProjectileAttack;
     switch (`${p.cls}.${idx}`) {
       // ── 검사 ──
@@ -393,7 +398,7 @@ export class Sim {
       case 'dwarf.1':
         p.atkAnim = 0.3;
         this.meleeArc(p, SKILL.slam.radius, Math.PI, SKILL.slam.mult, 160, SKILL.slam.stun);
-        this.events.push({ t: 'boom', x: p.x, y: p.y, r: SKILL.slam.radius });
+        this.events.push({ t: 'boom', x: p.x, y: p.y, r: SKILL.slam.radius, kind: 'slam' });
         ev(0);
         break;
       case 'dwarf.2':
@@ -809,13 +814,15 @@ export class Sim {
     e.hurt = 0.12;
     this.events.push({ t: 'dmg', x: e.x, y: e.y, v: dmg, crit, toPlayer: false });
     if (e.kind !== 'boss') {
-      const resist = e.elite ? ELITE.knockResist : e.kind === 'orc' ? 0.35 : 1;
+      const def = ENEMIES[e.kind];
+      const resist = e.elite ? ELITE.knockResist : def.knock ?? 1;
       e.vx = kx * resist;
       e.vy = ky * resist;
-      // 중간보스는 기절이 절반만 걸리고, 오크처럼 맞아도 거의 멈추지 않는다
-      const heavy = e.elite || e.kind === 'orc';
+      // 중간보스는 기절이 절반만 걸리고, 오크처럼 묵직한 적은 맞아도 거의 멈추지 않는다
+      const heavy = e.elite || def.heavy;
       e.stun = Math.max(e.stun, e.elite ? stun / 2 : stun, heavy ? 0.1 : 0.25);
-      if (e.state === 'windup' && (e.kind !== 'orc' || stun > 0)) e.state = 'move';
+      // 힘을 모으는 중에 맞으면 끊긴다 (묵직한 적은 기절시켜야 끊긴다). 암살자의 돌진 준비도 여기서 끊을 수 있다
+      if (e.state === 'windup' && (!def.heavy || stun > 0)) e.state = 'move';
     }
     if (e.hp <= 0) this.killEnemy(e, by);
   }
@@ -825,7 +832,7 @@ export class Sim {
     for (const p of this.players) if (!p.dead) this.gainXp(p, e.xp);
 
     if (e.kind === 'boss') {
-      this.events.push({ t: 'boom', x: e.x, y: e.y, r: 140, shake: true });
+      this.events.push({ t: 'boom', x: e.x, y: e.y, r: 140, shake: true, kind: 'boss' });
       this.events.push({ t: 'banner', text: '승리!', sub: `${ENEMIES.boss.name}을(를) 쓰러뜨렸다` });
       this.endWith('victory', 3);
       return;
@@ -879,8 +886,8 @@ export class Sim {
     } else {
       const d = dist(e.x, e.y, target.x, target.y);
       const toTarget = Math.atan2(target.y - e.y, target.x - e.x);
-      switch (e.kind) {
-        case 'slime': {
+      switch (def.ai) {
+        case 'hop': {
           // 0.45초 튀어 오르고 0.55초 쉰다
           const cycle = e.stateTime % 1;
           if (cycle < 0.45) {
@@ -894,35 +901,23 @@ export class Sim {
           break;
         }
 
-        case 'goblin':
+        case 'melee':
           this.chase(e, target, def.speed, e.r + target.r);
           e.aim = toTarget;
           break;
 
-        case 'skeleton': {
-          e.aim = toTarget;
-          // 시야가 막혀 있으면 돌아서 다가간다
-          const sight = lineOfSight(this.level, e.x, e.y, target.x, target.y);
-          if (!sight || d > 300) this.chase(e, target, def.speed, 0);
-          else if (d < 170) {
-            e.vx = -Math.cos(toTarget) * def.speed;
-            e.vy = -Math.sin(toTarget) * def.speed;
-          } else e.vx = e.vy = 0;
-          if (sight && e.timer <= 0 && d < 380) {
-            // 중간보스(해골 저격수)는 3발을 부채꼴로 쏜다
-            for (const off of e.elite ? [-0.22, 0, 0.22] : [0]) {
-              const p = this.enemyProjectile(e, 'enemyArrow', toTarget + off, 300, 1.6, e.atk);
-              p.vz = 60;
-              p.gz = 120;
-              this.projectiles.push(p);
-            }
-            e.timer = (e.elite ? 1.6 : 2) + this.rng() * 0.6;
-          }
+        case 'ranged':
+        case 'frost':
+        case 'bomb':
+          this.updateCaster(e, target, d, toTarget);
           break;
-        }
 
-        case 'orc':
-          this.updateOrc(e, target, d, toTarget);
+        case 'heavy':
+          this.updateHeavy(e, target, d, toTarget);
+          break;
+
+        case 'dash':
+          this.updateDasher(e, target, d, toTarget);
           break;
 
         case 'boss':
@@ -946,8 +941,91 @@ export class Sim {
     e.stateTime = 0;
   }
 
-  private updateOrc(e: Enemy, target: Player, d: number, toTarget: number) {
-    const def = ENEMIES.orc;
+  /**
+   * 원거리 적: 거리를 두고 서서 쏜다 (가까우면 물러나고, 시야가 막히면 돌아서 다가간다).
+   * ranged: 화살(해골)·돌(투척병), frost: 냉기 구슬(맞으면 느려짐), bomb: 발밑에 떨어지는 화염탄
+   */
+  private updateCaster(e: Enemy, target: Player, d: number, toTarget: number) {
+    const def = ENEMIES[e.kind];
+    e.aim = toTarget;
+    // [이보다 가까우면 물러난다, 이보다 멀면 다가간다] (그 사이에서 멈춰 쏜다)
+    const keep = def.ai === 'bomb' ? [190, 330] : def.ai === 'frost' ? [160, 280] : [170, 300];
+    const sight = lineOfSight(this.level, e.x, e.y, target.x, target.y);
+    if (e.state === 'attack') {
+      e.vx = e.vy = 0;
+      if (e.stateTime > 0.3) this.setState(e, 'move');
+      return;
+    }
+    if (!sight || d > keep[1]) this.chase(e, target, def.speed, 0);
+    else if (d < keep[0]) {
+      e.vx = -Math.cos(toTarget) * def.speed;
+      e.vy = -Math.sin(toTarget) * def.speed;
+    } else e.vx = e.vy = 0;
+    if (!sight || e.timer > 0 || d > keep[1] + 80) return;
+    if (def.ai === 'bomb') {
+      this.spitFire(e, target, e.elite ? 3 : 1);
+      e.timer = 3 + this.rng() * 0.8;
+    } else if (def.ai === 'frost') {
+      for (const off of e.elite ? [-0.25, 0, 0.25] : [0]) this.projectiles.push(this.enemyProjectile(e, 'iceOrb', toTarget + off, 230, 1.9, e.atk));
+      e.timer = 2.6 + this.rng() * 0.6;
+    } else {
+      // 중간보스(해골 저격수 등)는 3발을 부채꼴로 쏜다. 투척병은 돌을 더 높이 던진다
+      const rock = e.kind === 'thrower';
+      for (const off of e.elite ? [-0.22, 0, 0.22] : [0]) {
+        const p = this.enemyProjectile(e, rock ? 'rock' : 'enemyArrow', toTarget + off, rock ? 260 : 300, 1.6, e.atk);
+        p.vz = rock ? 110 : 60;
+        p.gz = rock ? 200 : 120;
+        this.projectiles.push(p);
+      }
+      e.timer = (e.elite ? 1.6 : rock ? 2.3 : 2) + this.rng() * 0.6;
+    }
+    this.setState(e, 'attack');
+  }
+
+  /** 암살자: 거리를 좁히다가 멈춰 힘을 모은 뒤(이때 때리면 끊긴다) 조준한 쪽으로 빠르게 돌진하며 벤다 */
+  private updateDasher(e: Enemy, target: Player, d: number, toTarget: number) {
+    const def = ENEMIES[e.kind];
+    if (e.state === 'move') {
+      e.aim = toTarget;
+      this.chase(e, target, def.speed, e.r + target.r);
+      if (d < 200 && e.timer <= 0 && lineOfSight(this.level, e.x, e.y, target.x, target.y)) {
+        this.setState(e, 'windup');
+        e.vx = e.vy = 0;
+      }
+    } else if (e.state === 'windup') {
+      e.vx = e.vy = 0;
+      e.aim = toTarget;
+      if (e.stateTime > 0.5) {
+        this.setState(e, 'charge');
+        e.tx = 0; // 돌진 중에는 도약 목표(tx)를 쓰지 않으므로 '이번 돌진에 이미 벴는지' 표시로 빌려 쓴다
+      }
+    } else if (e.state === 'charge') {
+      e.vx = Math.cos(e.aim) * 520;
+      e.vy = Math.sin(e.aim) * 520;
+      for (const p of this.players) {
+        if (p.dead || e.tx > 0) continue;
+        if (dist(e.x, e.y, p.x, p.y) < e.r + p.r + 6) {
+          this.damagePlayer(p, e.atk * 1.4, e.x, e.y);
+          e.tx = 1;
+        }
+      }
+      if (e.stateTime > 0.32) {
+        this.setState(e, 'attack');
+        this.events.push({ t: 'swing', x: e.x, y: e.y, aim: e.aim, range: e.r + 30, arc: 0.8, enemy: true });
+      }
+    } else {
+      e.vx = approach(e.vx, 0, 2000 / 60);
+      e.vy = approach(e.vy, 0, 2000 / 60);
+      if (e.stateTime > 0.45) {
+        this.setState(e, 'move');
+        e.timer = 2.2 + this.rng() * 0.8;
+      }
+    }
+  }
+
+  /** 묵직한 적(오크·약탈자·기사): 다가가 멈춰 몸이 깜빡인 뒤 앞쪽을 크게 내려친다 */
+  private updateHeavy(e: Enemy, target: Player, d: number, toTarget: number) {
+    const def = ENEMIES[e.kind];
     if (e.state === 'move') {
       e.aim = toTarget;
       this.chase(e, target, def.speed, e.r + target.r + 6);
@@ -1027,7 +1105,7 @@ export class Sim {
           for (let i = 0; i < n; i++) {
             this.projectiles.push(this.enemyProjectile(e, 'shockwave', (i / n) * Math.PI * 2, 240, 1.3, e.atk));
           }
-          this.events.push({ t: 'boom', x: e.x, y: e.y, r: 80, shake: true });
+          this.events.push({ t: 'boom', x: e.x, y: e.y, r: 80, shake: true, kind: 'bossSlam' });
           for (const p of this.players) if (dist(p.x, p.y, e.x, e.y) < e.r + 30) this.damagePlayer(p, e.atk * 1.3, e.x, e.y);
           this.setState(e, 'move');
           e.timer = cooldown();
@@ -1059,7 +1137,7 @@ export class Sim {
     }
   }
 
-  /** 목표 주변에 화염탄을 뱉는다. 포물선으로 날아가 떨어질 자리에 경고 원이 그려진다. */
+  /** 목표 주변에 화염탄 n개를 뱉는다 (흑룡, 화염 술사). 포물선으로 날아가 떨어질 자리에 경고 원이 그려진다. 첫 발은 목표 발밑. */
   private spitFire(e: Enemy, target: Player, n: number) {
     const flight = 1.1, height = 140;
     for (let i = 0; i < n; i++) {
@@ -1136,7 +1214,7 @@ export class Sim {
           gone = true;
           if (pr.fromPlayer) this.explode(pr);
           else {
-            this.events.push({ t: 'boom', x: pr.x, y: pr.y, r: pr.aoe });
+            this.events.push({ t: 'boom', x: pr.x, y: pr.y, r: pr.aoe, kind: 'firebomb' });
             for (const p of this.players) if (dist(p.x, p.y, pr.x, pr.y) < pr.aoe + p.r) this.damagePlayer(p, pr.dmg, pr.x, pr.y);
           }
         }
@@ -1172,6 +1250,7 @@ export class Sim {
           if (p.dead || p.invuln > 0) continue;
           if (dist(pr.x, pr.y, p.x, p.y) < pr.r + p.r) {
             this.damagePlayer(p, pr.dmg, pr.x - pr.vx, pr.y - pr.vy);
+            if (pr.kind === 'iceOrb') p.chill = CHILL_TIME;
             if (pr.kind !== 'shockwave') gone = true;
             break;
           }
@@ -1183,7 +1262,8 @@ export class Sim {
   }
 
   private explode(pr: Projectile) {
-    this.events.push({ t: 'boom', x: pr.x, y: pr.y, r: pr.aoe });
+    const kind = pr.kind === 'meteor' || pr.kind === 'fireball' || pr.kind === 'rain' ? pr.kind : 'orb';
+    this.events.push({ t: 'boom', x: pr.x, y: pr.y, r: pr.aoe, kind, shake: kind === 'meteor' });
     const by = this.playerById(pr.ownerId);
     for (const e of this.enemies) {
       if (!e.active || e.hp <= 0) continue;

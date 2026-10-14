@@ -8,6 +8,7 @@ import { ColladaLoader } from 'three/examples/jsm/loaders/ColladaLoader.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { isTouchDevice } from './TouchControls';
+import { SkillFx } from './SkillFx';
 import { CLASSES, ELITE, GATE_KEEPERS, RARITY, TILE, VIEW_H, VIEW_W } from '../game/data';
 import { G_ROAD, G_STONE, T_FLOOR, T_GATE, T_SHOP, T_TREE, openGate, zoneOfTx, type Level } from '../game/level';
 import type { ClassId, DropView, EnemyKind, EnemyView, Player, ProjectileView, Snapshot } from '../game/types';
@@ -41,7 +42,22 @@ const MODELS = {
   ham: 'food/whole-ham', apple: 'food/apple', grapes: 'food/grapes', wine: 'food/wine-red',
 } as const;
 /** 'dragon'(최종 보스)은 Collada 파일이라 따로 불러온다 (loadDragon). 'goblinKeeper'(첫 문지기)도 크기를 맞춰야 해서 따로 (loadGoblin) */
-type ModelKey = keyof typeof MODELS | 'dragon' | 'goblinKeeper';
+type ModelKey = keyof typeof MODELS | 'dragon' | 'goblinKeeper' | UacpKey;
+
+/**
+ * Quaternius "Ultimate Animated Character Pack" (CC0) 캐릭터: 구역별 몬스터. 키가 약 3.1이라 불러올 때 Kenney 캐릭터 키로 줄인다.
+ * 모두 같은 뼈대·동작(Idle·Walk·Punch·Shoot_OneHanded·Defeat·RecieveHit)을 쓴다.
+ */
+const UACP = {
+  uPug: 'Pug', uGoblin: 'Goblin_Male', uGoblinF: 'Goblin_Female', uPirate: 'Pirate_Male', uNinja: 'Ninja_Male',
+  uViking: 'Viking_Male', uWitch: 'Witch', uKnight: 'Knight_Male', uZombie: 'Zombie_Male', uKnightGold: 'Knight_Golden_Male', uWizard: 'Wizard',
+} as const;
+type UacpKey = keyof typeof UACP;
+/** 게임이 부르는 동작 이름 → 이 팩의 클립 이름 (달리기·도약 클립이 없어 걷기로 대신한다) */
+const UACP_ANIMS = {
+  idle: 'Idle', walk: 'Walk', sprint: 'Walk', jump: 'Walk', die: 'Defeat',
+  'attack-melee-right': 'Punch', 'holding-left-shoot': 'Shoot_OneHanded', 'holding-right': 'RecieveHit',
+};
 type Model = { scene: THREE.Object3D; animations: THREE.AnimationClip[] };
 
 const U = 1 / TILE; // 월드 단위 → 3D 단위
@@ -51,9 +67,11 @@ const CHAR_SCALE = 1.25;
 const DRAGON_SCALE = 3; // 드래곤 모델 배율 (CHAR_SCALE이 한 번 더 곱해진다) // 캐릭터 모델(키 약 0.8칸)을 맵에 비해 조금 키운다
 const Z_SCALE = 1 / 40; // 투사체 높이(px) → 3D 높이
 
-const GRASS = [0x5c9a44, 0x8a9448, 0xe4ebf2, 0x8a7450]; // 구역별 바닥 (3구역은 눈밭)
+const GRASS = [0x5c9a44, 0x8a9448, 0xe4ebf2, 0x8a7450, 0x4a3c36]; // 구역별 바닥 (3구역 눈밭, 5구역 화산재)
 const ROAD = 0xb59866;
 const SNOW_ROAD = 0xaebccb; // 3구역 설원의 다져진 눈길
+const VOLCANO_ROAD = 0x7a4630; // 5구역 화산의 붉은 흙길
+const VOLCANO_ZONE = 5;
 const SNOW_ZONE = 3;
 const SNOW_BOX = { x: 30, y: 12, z: 22 }; // 눈 입자가 도는 카메라 주변 상자
 const STONE = 0x9a9aa4;
@@ -89,8 +107,25 @@ const PLAYER_LOOKS: Record<ClassId, Look> = {
   // 흰 가운에 안경을 쓴 학자 모습 + 끝에 보라 구슬이 빛나는 지팡이
   gnome: { model: 'sage', scale: [0.85, 0.78, 0.85], weapons: [{ ...SPEAR, glowTip: 0xb070ff }], attack: 'attack-melee-right' },
 };
+/** Quaternius 캐릭터 손(FistR)에 드는 무기. 손 안쪽은 원본 크기 단위라 크게 키운다 */
+const U_HAND = { bone: 'FistR', pos: [0, 0.3, 0] as [number, number, number], rot: [0, 0, 0] as [number, number, number] };
+const uLook = (model: UacpKey, size: number, attack: 'attack-melee-right' | 'holding-left-shoot', weapon?: { model: ModelKey; scale: number; glowTip?: number }): Look => ({
+  model, scale: [size, size, size], attack, anims: UACP_ANIMS,
+  weapons: weapon ? [{ ...U_HAND, ...weapon }] : [],
+});
+
 const ENEMY_LOOKS: Record<Exclude<EnemyKind, 'slime'>, Look> = {
-  goblin: { model: 'orc', scale: [0.8, 0.8, 0.8], tint: 0xd8ffb0, weapons: [{ ...SWORD, scale: 0.7 }], attack: 'attack-melee-right' },
+  goblin: uLook('uGoblin', 0.85, 'attack-melee-right', { model: 'sword', scale: 2.6 }),
+  hound: uLook('uPug', 0.9, 'attack-melee-right'),
+  thrower: uLook('uGoblinF', 0.82, 'holding-left-shoot'),
+  bandit: uLook('uPirate', 1, 'attack-melee-right', { model: 'sword', scale: 3.4 }),
+  assassin: uLook('uNinja', 0.95, 'attack-melee-right', { model: 'sword', scale: 2.8 }),
+  raider: uLook('uViking', 1.15, 'attack-melee-right', { model: 'spear', scale: 3.6 }),
+  iceWitch: uLook('uWitch', 1, 'holding-left-shoot', { model: 'spear', scale: 3, glowTip: 0x80e0ff }),
+  darkKnight: uLook('uKnight', 1.12, 'attack-melee-right', { model: 'sword', scale: 3.8 }),
+  zombie: uLook('uZombie', 1, 'attack-melee-right'),
+  flameKnight: uLook('uKnightGold', 1.15, 'attack-melee-right', { model: 'spear', scale: 3.8, glowTip: 0xff6020 }),
+  pyromancer: uLook('uWizard', 1, 'holding-left-shoot', { model: 'spear', scale: 3, glowTip: 0xff7a20 }),
   skeleton: { model: 'soldier', scale: [0.9, 1, 0.9], tint: 0xeeeedd, weapons: [BOW], attack: 'holding-left-shoot' },
   orc: { model: 'orc', scale: [1.25, 1.25, 1.25], weapons: [SPEAR], attack: 'attack-melee-right' },
   // 최종 보스: OpenGameArt "Cethiel's Dragon 3D" (CC0). 클립은 idle·walk·attack·die 넷뿐이라 나머지는 비슷한 것으로 대신한다
@@ -144,9 +179,11 @@ export class World3D {
   private projectiles = new Map<number, THREE.Object3D>();
   private drops = new Map<number, THREE.Object3D>();
   private npcs: Char[] = []; // 상인처럼 제자리에서 움직이기만 하는 캐릭터
-  private gates: { group: THREE.Group; open: boolean; t: number }[] = [];
-  private snowfall!: THREE.Points; // 설원(3구역)에 있을 때 카메라 주변에 내리는 눈 // 구역 출구의 철문 (열리면 땅속으로 내려간다)
+  private gates: { group: THREE.Group; open: boolean; t: number }[] = []; // 구역 출구의 철문 (열리면 땅속으로 내려간다)
+  /** 구역 날씨: 카메라가 그 구역 위에 있을 때 주변에 도는 입자 (3구역 눈, 5구역 불씨) */
+  private weather: { pts: THREE.Points; zone: number; rise: boolean }[] = [];
   private camTarget = new THREE.Vector3();
+  private tmpSize = new THREE.Vector2();
   private camReady = false;
   /** 맵 편집기의 3D 보기처럼 플레이어 없이 카메라를 직접 움직일 때 true (update가 플레이어를 따라가지 않는다) */
   freeCamera = false;
@@ -156,6 +193,8 @@ export class World3D {
   private groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   private pxPerUnit = 40;
   private clock = 0;
+  /** 스킬·폭발 연출 */
+  readonly fx: SkillFx;
 
   constructor(private phaserCanvas: HTMLCanvasElement, private level: Level) {
     this.canvas = document.createElement('canvas');
@@ -187,6 +226,7 @@ export class World3D {
     sc.left = -18; sc.right = 18; sc.top = 18; sc.bottom = -18; sc.near = 1; sc.far = 60;
     this.sun.shadow.bias = -0.0008;
     this.scene.add(this.sun, this.sun.target);
+    this.fx = new SkillFx(this.scene);
   }
 
   async load() {
@@ -204,6 +244,7 @@ export class World3D {
       }),
       this.loadDragon(),
       this.loadGoblin(loader),
+      ...(Object.keys(UACP) as UacpKey[]).map((k) => this.loadUacp(loader, k)),
     ]);
     this.buildWorld();
   }
@@ -268,6 +309,23 @@ export class World3D {
     this.models.set('goblinKeeper', { scene: root, animations: g.animations });
   }
 
+  /** 구역별 몬스터 모델 하나 (키 약 3.1 → Kenney 캐릭터와 비슷한 키로 줄인다) */
+  private async loadUacp(loader: GLTFLoader, key: UacpKey) {
+    const g = await loader.loadAsync(`${BASE}uacp/${UACP[key]}.glb`);
+    g.scene.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      mesh.castShadow = true;
+      mesh.frustumCulled = false; // 애니메이션으로 몸이 원래 경계 밖까지 움직인다
+    });
+    const body = new THREE.Group();
+    body.scale.setScalar(0.9 / 3.1);
+    body.add(g.scene);
+    const root = new THREE.Group();
+    root.add(body);
+    this.models.set(key, { scene: root, animations: g.animations });
+  }
+
   // ─── 정적인 맵 ─────────────────────────────────────
 
   private buildWorld() {
@@ -285,7 +343,7 @@ export class World3D {
         groundMesh.setMatrixAt(i, m);
         const g = ground[ty * w + tx];
         const zone = tx >= this.level.arenaTx ? 0 : zoneOfTx(this.level, tx);
-        c.setHex(g === G_ROAD ? (zone === SNOW_ZONE ? SNOW_ROAD : ROAD) : g === G_STONE ? STONE : GRASS[zoneOfTx(this.level, tx) - 1]);
+        c.setHex(g === G_ROAD ? (zone === SNOW_ZONE ? SNOW_ROAD : zone === VOLCANO_ZONE ? VOLCANO_ROAD : ROAD) : g === G_STONE ? STONE : GRASS[zoneOfTx(this.level, tx) - 1]);
         c.multiplyScalar(0.92 + hash(tx, ty) * 0.12);
         groundMesh.setColorAt(i++, c);
       }
@@ -330,7 +388,10 @@ export class World3D {
         } else if (ground[ty * w + tx] === G_STONE) {
           put(r < 0.85 ? 'aFloor' : 'aFloorDetail', x, z, 0, 1, 0.001);
         } else if (ground[ty * w + tx] !== G_ROAD && r < 0.05) {
-          put(r2 < 0.5 ? 'plant' : 'patchGrass', x, z, r2 * Math.PI * 2, 0.9);
+          // 5구역 화산은 풀 대신 붉게 갈라진 용암 자국
+          if (tx < this.level.arenaTx && zoneOfTx(this.level, tx) === VOLCANO_ZONE) {
+            if (r < 0.03) this.fx.staticDecal(x, z, 1.4 + r2 * 1.6, 'scorch', r2 * Math.PI * 2);
+          } else put(r2 < 0.5 ? 'plant' : 'patchGrass', x, z, r2 * Math.PI * 2, 0.9);
         }
       }
 
@@ -363,7 +424,8 @@ export class World3D {
       put('gateTower', gate.tx + 0.5, gate.ty1 + 1.5, 0, 1.15);
     }
 
-    this.makeSnowfall();
+    this.makeWeather(SNOW_ZONE, 0xffffff, 0.09, 700, false);
+    this.makeWeather(VOLCANO_ZONE, 0xff7a30, 0.08, 260, true);
 
     // 출발 지점 야영지
     const s = { x: this.level.start.x * U, z: this.level.start.y * U };
@@ -389,8 +451,7 @@ export class World3D {
     for (const [k, mats] of place) this.instance(k, mats);
   }
 
-  private makeSnowfall() {
-    const n = 700;
+  private makeWeather(zone: number, color: number, size: number, n: number, rise: boolean) {
     const pos = new Float32Array(n * 3);
     for (let i = 0; i < n; i++) {
       pos[i * 3] = (Math.random() - 0.5) * SNOW_BOX.x;
@@ -399,32 +460,50 @@ export class World3D {
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    this.snowfall = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.09, transparent: true, opacity: 0.85, depthWrite: false }));
-    this.snowfall.frustumCulled = false;
-    this.snowfall.visible = false;
-    this.scene.add(this.snowfall);
+    const pts = new THREE.Points(geo, new THREE.PointsMaterial({
+      color, size, transparent: true, opacity: rise ? 1 : 0.85, depthWrite: false,
+      blending: rise ? THREE.AdditiveBlending : THREE.NormalBlending,
+    }));
+    pts.frustumCulled = false;
+    pts.visible = false;
+    this.scene.add(pts);
+    this.weather.push({ pts, zone, rise });
   }
 
-  /** 카메라가 설원 위에 있으면 눈이 비스듬히 내린다 (입자는 카메라를 따라다니며 바닥에 닿으면 위로 돌아간다) */
-  private updateSnowfall(dt: number) {
+  /** 카메라가 그 구역 위에 있으면 눈은 비스듬히 내리고 불씨는 흔들리며 떠오른다 (입자는 카메라를 따라다니며 상자 끝에서 반대쪽으로 돌아간다) */
+  private updateWeather(dt: number) {
     const s = this.level.zoneStartsTx;
     const x = this.camTarget.x;
-    const inSnow = x > s[SNOW_ZONE - 1] - 6 && x < (s[SNOW_ZONE] ?? this.level.arenaTx) + 6;
-    this.snowfall.visible = inSnow;
-    if (!inSnow) return;
-    this.snowfall.position.set(this.camTarget.x, 0, this.camTarget.z);
-    const pos = this.snowfall.geometry.getAttribute('position') as THREE.BufferAttribute;
-    const a = pos.array as Float32Array;
-    for (let i = 0; i < a.length; i += 3) {
-      a[i + 1] -= dt * (1.2 + (i % 7) * 0.12);
-      a[i] += dt * (0.35 + Math.sin(this.clock + i) * 0.25);
-      if (a[i + 1] < 0) {
-        a[i + 1] += SNOW_BOX.y;
-        a[i] = (Math.random() - 0.5) * SNOW_BOX.x;
+    for (const w of this.weather) {
+      const on = s[w.zone - 1] !== undefined && x > s[w.zone - 1] - 6 && x < (s[w.zone] ?? this.level.arenaTx) + 6;
+      w.pts.visible = on;
+      if (!on) continue;
+      w.pts.position.set(this.camTarget.x, 0, this.camTarget.z);
+      const pos = w.pts.geometry.getAttribute('position') as THREE.BufferAttribute;
+      const a = pos.array as Float32Array;
+      for (let i = 0; i < a.length; i += 3) {
+        if (w.rise) {
+          a[i + 1] += dt * (0.5 + (i % 5) * 0.15);
+          a[i] += dt * Math.sin(this.clock * 2 + i) * 0.5;
+          a[i + 2] += dt * Math.cos(this.clock * 1.7 + i) * 0.3;
+          if (a[i + 1] > SNOW_BOX.y * 0.5) {
+            a[i + 1] = 0;
+            a[i] = (Math.random() - 0.5) * SNOW_BOX.x;
+            a[i + 2] = (Math.random() - 0.5) * SNOW_BOX.z;
+          }
+        } else {
+          a[i + 1] -= dt * (1.2 + (i % 7) * 0.12);
+          a[i] += dt * (0.35 + Math.sin(this.clock + i) * 0.25);
+          if (a[i + 1] < 0) {
+            a[i + 1] += SNOW_BOX.y;
+            a[i] = (Math.random() - 0.5) * SNOW_BOX.x;
+          }
+        }
+        if (a[i] > SNOW_BOX.x / 2) a[i] -= SNOW_BOX.x;
+        if (a[i] < -SNOW_BOX.x / 2) a[i] += SNOW_BOX.x;
       }
-      if (a[i] > SNOW_BOX.x / 2) a[i] -= SNOW_BOX.x;
+      pos.needsUpdate = true;
     }
-    pos.needsUpdate = true;
   }
 
   /** 설원(3구역) 칸 하나를 꾸민다 */
@@ -575,6 +654,7 @@ export class World3D {
     this.syncProjectiles(s);
     this.syncDrops(s);
     this.syncGates(s, dt);
+    this.fx.update(dt, s.players, s.enemies);
     for (const npc of this.npcs) npc.mixer.update(dt);
 
     const me = this.freeCamera ? undefined : s.players.find((p) => p.id === myId);
@@ -590,7 +670,7 @@ export class World3D {
     this.camera.position.set(ct.x, ct.y + Math.sin(PITCH) * this.camDist, ct.z + Math.cos(PITCH) * this.camDist);
     this.camera.lookAt(ct);
     this.camera.updateMatrixWorld();
-    this.updateSnowfall(dt);
+    this.updateWeather(dt);
     this.sun.position.set(ct.x - 8, 18, ct.z + 6);
     this.sun.target.position.copy(ct);
 
@@ -599,6 +679,7 @@ export class World3D {
     this.pxPerUnit = Math.abs(b.sx - a.sx);
 
     this.syncCanvas();
+    this.fx.setScreenHeight(this.renderer.getDrawingBufferSize(this.tmpSize).y);
     this.renderer.render(this.scene, this.camera);
   }
 
@@ -694,9 +775,12 @@ export class World3D {
 
   private updateEnemyChar(ch: Char, e: EnemyView, dt: number) {
     const moved = this.placeChar(ch, e.x, e.y, e.aim, (e.z * U) * 0.6);
-    this.flash(ch, e.hurt > 0 || (e.state === 'windup' && Math.floor(this.clock * 12) % 2 === 0), e.hurt > 0 ? 0xffffff : 0xff3020);
+    const blink = e.hurt > 0 || (e.state === 'windup' && Math.floor(this.clock * 12) % 2 === 0);
+    // 냉기 파동으로 느려진 적은 푸르게 언 빛
+    if (!blink && e.slow > 0) this.flash(ch, true, 0x4a90ff);
+    else this.flash(ch, blink, e.hurt > 0 ? 0xffffff : 0xff3020);
     if (this.clock >= ch.oneShotUntil) {
-      if (e.state === 'attack' || (e.kind === 'skeleton' && e.timer > 1.9)) this.play(ch, ch.attack, true);
+      if (e.state === 'attack') this.play(ch, ch.attack, true);
       else if (e.state === 'charge') this.play(ch, 'sprint');
       else if (e.state === 'leap') this.play(ch, 'jump');
       else if (e.state === 'windup') this.play(ch, 'holding-right');
@@ -720,7 +804,7 @@ export class World3D {
     const squash = lift > 0.05 ? 1.15 : 0.85;
     mesh.position.set(e.x * U, 0.3 * squash * (e.elite ? ELITE.scale : 1) + lift, e.y * U);
     mesh.scale.set(1 / Math.sqrt(squash), squash * 0.75, 1 / Math.sqrt(squash));
-    (mesh.material as THREE.MeshStandardMaterial).emissive.setHex(e.hurt > 0 ? 0x666666 : 0x000000);
+    (mesh.material as THREE.MeshStandardMaterial).emissive.setHex(e.hurt > 0 ? 0x666666 : e.slow > 0 ? 0x2a5aa0 : 0x000000);
   }
 
   private syncProjectiles(s: Snapshot) {
@@ -736,6 +820,7 @@ export class World3D {
       const falling = pr.kind === 'rain' || pr.kind === 'meteor' || pr.kind === 'firebomb';
       const y = pr.kind === 'shockwave' ? 0.05 : falling ? pr.z * Z_SCALE * 0.6 + 0.2 : 0.55 + pr.z * Z_SCALE;
       obj.position.set(pr.x * U, y, pr.y * U);
+      this.fx.trail(pr, obj.position);
       if (pr.kind === 'arrow' || pr.kind === 'enemyArrow' || pr.kind === 'wave') {
         // 진행 방향(높이 변화 포함)으로 돌린다
         const dir = new THREE.Vector3(pr.vx * U, pr.vz * Z_SCALE, pr.vy * U);
@@ -764,6 +849,9 @@ export class World3D {
         return mesh;
       }
       case 'orb': return glow(0xc89aff, 0.18);
+      case 'iceOrb': return glow(0x9ae4ff, 0.2); // 얼음 마녀의 냉기 구슬
+      case 'rock': // 고블린 투척병의 돌
+        return new THREE.Mesh(new THREE.DodecahedronGeometry(0.12), new THREE.MeshStandardMaterial({ color: 0x8a8070, roughness: 0.9 }));
       case 'fireball': return glow(0xff7a20, 0.35);
       case 'meteor': return glow(0xff5010, 0.9);
       case 'firebomb': return glow(0xff6a1a, 0.32); // 흑룡의 화염탄

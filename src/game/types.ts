@@ -2,7 +2,14 @@
 // 좌표는 모두 "월드 좌표"(위에서 내려다본 평면, px)다. 3D 변환은 렌더러(World3D)만 한다.
 
 export type ClassId = 'swordsman' | 'dwarf' | 'elf' | 'gnome';
-export type EnemyKind = 'slime' | 'goblin' | 'skeleton' | 'orc' | 'boss';
+export type EnemyKind =
+  | 'slime' | 'goblin' | 'skeleton' | 'orc' | 'boss'
+  // 구역별로 섞여 나오는 몬스터 (Quaternius 캐릭터 모델)
+  | 'hound' | 'thrower' // 1구역: 퍼그 졸개, 고블린 투척병
+  | 'bandit' | 'assassin' // 2구역: 협곡 산적, 암살자
+  | 'raider' | 'iceWitch' // 3구역: 설원 약탈자, 얼음 마녀
+  | 'darkKnight' | 'zombie' // 4구역: 흑기사, 망자 병사
+  | 'flameKnight' | 'pyromancer'; // 5구역: 불꽃 기사, 화염 술사
 export type Slot = 'weapon' | 'armor' | 'accessory';
 export type Rarity = 'common' | 'rare' | 'epic' | 'legendary';
 
@@ -92,6 +99,7 @@ export interface Player extends Body {
   guard: number; // 받는 피해 감소 남은 시간
   guardReduce: number; // 받는 피해 감소율
   atkBuff: number; // 전투 함성 남은 시간
+  chill: number; // 얼음 마녀의 냉기에 맞아 느려진 남은 시간
   invuln: number;
   dead: boolean;
   revive: number; // 부활 게이지 0~REVIVE_TIME
@@ -128,7 +136,7 @@ export interface Projectile {
   id: number;
   fromPlayer: boolean;
   ownerId: string;
-  kind: 'arrow' | 'orb' | 'fireball' | 'wave' | 'rain' | 'meteor' | 'enemyArrow' | 'firebomb' | 'shockwave';
+  kind: 'arrow' | 'orb' | 'fireball' | 'wave' | 'rain' | 'meteor' | 'enemyArrow' | 'firebomb' | 'shockwave' | 'rock' | 'iceOrb';
   x: number;
   y: number;
   z: number; // 높이 (렌더용 포물선, 돌은 착지 판정에 사용)
@@ -172,16 +180,19 @@ export interface Shop {
   stock: ShopEntry[];
 }
 
+/** 폭발 연출 종류 (화면 효과만 다르다) */
+export type BoomKind = 'orb' | 'fireball' | 'meteor' | 'rain' | 'slam' | 'bossSlam' | 'firebomb' | 'boss';
+
 export type GameEvent =
   | { t: 'dmg'; x: number; y: number; v: number; crit: boolean; toPlayer: boolean }
   | { t: 'heal'; x: number; y: number; v: number }
-  | { t: 'boom'; x: number; y: number; r: number; shake?: boolean }
+  | { t: 'boom'; x: number; y: number; r: number; shake?: boolean; kind?: BoomKind }
   | { t: 'levelup'; pid: string; level: number }
   | { t: 'equip'; pid: string; item: Item }
   | { t: 'down'; pid: string }
   | { t: 'revive'; pid: string }
   | { t: 'banner'; text: string; sub?: string }
-  | { t: 'skill'; pid: string; idx: number; x: number; y: number; r: number }
+  | { t: 'skill'; pid: string; idx: number; x: number; y: number; r: number; aim: number }
   | { t: 'unlock'; pid: string; idx: number }
   | { t: 'nomp'; pid: string }
   | { t: 'mana'; x: number; y: number; v: number }

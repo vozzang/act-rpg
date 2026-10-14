@@ -1,15 +1,9 @@
-// 게임 이벤트 연출: 떠오르는 숫자, 배너, 공격 범위, 폭발, 스킬 고리, 끝 화면
+// 게임 이벤트 연출: 떠오르는 숫자, 배너, 공격 범위, 끝 화면 (스킬·폭발의 3D 효과는 SkillFx)
 import Phaser from 'phaser';
 import { CLASSES, POINTS_PER_LEVEL, RARITY, VIEW_H, VIEW_W, itemName } from '../game/data';
 import type { GameEvent, Player, Snapshot } from '../game/types';
 import { hex, makeText } from './ui';
 import type { World3D } from './World3D';
-
-// 범위 스킬이 퍼질 때 바닥 고리 색
-const SKILL_RING: Record<string, number> = {
-  'swordsman.2': 0xff8a30, 'dwarf.0': 0xff6040, 'dwarf.3': 0xffd060,
-  'elf.2': 0xfff0a0, 'gnome.0': 0x70ff90, 'gnome.1': 0x90d8ff,
-};
 
 const DEPTH_GROUND = 9; // 바닥 효과 (월드 위, 글자 아래)
 const DEPTH_FLOAT = 40;
@@ -71,8 +65,8 @@ export class Effects {
         break;
       }
       case 'boom':
-        this.groundPulse(e.x, e.y, e.r, 0xffc070, 300, true);
-        if (e.shake) this.scene.cameras.main.shake(150, 0.006);
+        w.fx.boom(e.x, e.y, e.r, e.kind);
+        if (e.shake) this.scene.cameras.main.shake(e.kind === 'meteor' ? 220 : 150, e.kind === 'meteor' ? 0.008 : 0.006);
         break;
       case 'swing':
         this.swingArc(e.x, e.y, e.aim, e.range, e.arc, e.enemy ? 0xff5040 : 0xffffff);
@@ -108,7 +102,7 @@ export class Effects {
         const sk = CLASSES[pos.p.cls].skills[e.idx];
         const ultimate = e.idx === 3;
         this.floatText(pos.x, pos.y - 6, sk.name, ultimate ? '#ffb030' : hex(CLASSES[pos.p.cls].color), ultimate ? 20 : 15, 900);
-        if (e.r > 0) this.groundPulse(e.x, e.y, e.r, SKILL_RING[`${pos.p.cls}.${e.idx}`] ?? 0xffffff, 450, false);
+        w.fx.skill(pos.p.cls, e.idx, e.x, e.y, e.aim ?? pos.p.aim, s.players, pos.p);
         break;
       }
       case 'unlock': {
@@ -123,16 +117,6 @@ export class Effects {
         break;
       }
     }
-  }
-
-  /** 바닥에서 퍼지는 원 (채우면 폭발, 테두리만이면 스킬 범위) */
-  private groundPulse(x: number, y: number, r: number, color: number, duration: number, filled: boolean) {
-    const { sx, sy } = this.world.toScreen(x, y);
-    const el = this.world.groundEllipse(r);
-    const shape = this.scene.add.ellipse(sx, sy, el.w, el.h).setDepth(DEPTH_GROUND).setScale(filled ? 0.3 : 0.2);
-    if (filled) shape.setFillStyle(color, 0.45);
-    else shape.setStrokeStyle(4, color, 0.9);
-    this.scene.tweens.add({ targets: shape, scale: 1, alpha: 0, duration, onComplete: () => shape.destroy() });
   }
 
   /** 근접 공격 범위를 바닥에 부채꼴로 잠깐 보여준다. */

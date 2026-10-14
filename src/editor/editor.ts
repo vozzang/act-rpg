@@ -1,6 +1,6 @@
 // 맵 편집기 (개발 서버에서 /editor.html). 위에서 내려다본 타일 격자에 지형을 칠하고 몬스터·상점·문·출발점·보스를 놓는다.
 // '저장'은 개발 서버를 통해 src/game/maps/world.json을 덮어쓰고, '테스트 플레이'는 저장하지 않은 맵으로 바로 게임을 연다.
-import { ELITES, GATE_KEEPERS, ZONE_NAMES } from '../game/data';
+import { ELITES, ENEMIES, GATE_KEEPERS, ZONE_NAMES } from '../game/data';
 import { buildLevel } from '../game/level';
 import { mapFromLevel, stringifyMap, validateMap, zoneAt, type MapFile, type SpawnType } from '../game/mapfile';
 import { DRAFT_KEY } from '../game/world';
@@ -25,6 +25,16 @@ const SPAWN_STYLE: Record<SpawnType, { name: string; color: string; letter: stri
   goblin: { name: '고블린', color: '#3f9a3a', letter: 'G' },
   skeleton: { name: '해골 궁수', color: '#e8e8dc', letter: 'K' },
   orc: { name: '오크 전사', color: '#b8673a', letter: 'O' },
+  hound: { name: ENEMIES.hound.name, color: '#d8b890', letter: 'p' },
+  thrower: { name: ENEMIES.thrower.name, color: '#8aa050', letter: 't' },
+  bandit: { name: ENEMIES.bandit.name, color: '#5070c0', letter: 'b' },
+  assassin: { name: ENEMIES.assassin.name, color: '#404048', letter: 'a' },
+  raider: { name: ENEMIES.raider.name, color: '#c06040', letter: 'v' },
+  iceWitch: { name: ENEMIES.iceWitch.name, color: '#80d0ff', letter: 'w' },
+  darkKnight: { name: ENEMIES.darkKnight.name, color: '#707078', letter: 'k' },
+  zombie: { name: ENEMIES.zombie.name, color: '#80a070', letter: 'z' },
+  flameKnight: { name: ENEMIES.flameKnight.name, color: '#e0b030', letter: 'f' },
+  pyromancer: { name: ENEMIES.pyromancer.name, color: '#ff7030', letter: 'm' },
   elite1: { name: '중간보스 1', color: '#ffc040', letter: '1' },
   elite2: { name: '중간보스 2', color: '#ffc040', letter: '2' },
   keeper: { name: '문지기', color: '#ff7a30', letter: '문' },
@@ -37,6 +47,9 @@ const OBJECTS: { id: ObjectTool; name: string; key: string; color: string }[] = 
   { id: 'goblin', name: '고블린', key: 'W', color: SPAWN_STYLE.goblin.color },
   { id: 'skeleton', name: '해골 궁수', key: 'E', color: SPAWN_STYLE.skeleton.color },
   { id: 'orc', name: '오크 전사', key: 'R', color: SPAWN_STYLE.orc.color },
+  // 구역별 몬스터 (단축키 없음)
+  ...(['hound', 'thrower', 'bandit', 'assassin', 'raider', 'iceWitch', 'darkKnight', 'zombie', 'flameKnight', 'pyromancer'] as const)
+    .map((id) => ({ id, name: SPAWN_STYLE[id].name, key: '', color: SPAWN_STYLE[id].color })),
   { id: 'elite1', name: '중간보스 1', key: 'A', color: SPAWN_STYLE.elite1.color },
   { id: 'elite2', name: '중간보스 2', key: 'S', color: SPAWN_STYLE.elite2.color },
   { id: 'keeper', name: '문지기', key: 'D', color: SPAWN_STYLE.keeper.color },
@@ -47,7 +60,7 @@ const OBJECTS: { id: ObjectTool; name: string; key: string; color: string }[] = 
 ];
 
 // 화면 색 (게임의 3D 바닥 색과 맞춘다. 3구역은 설원)
-const GRASS = ['#5c9a44', '#8a9448', '#e4ebf2', '#8a7450'];
+const GRASS = ['#5c9a44', '#8a9448', '#e4ebf2', '#8a7450', '#4a3c36'];
 const SNOW_ZONE = 3;
 
 // ─── 상태 ─────────────────────────────────────────────
@@ -74,6 +87,15 @@ const cv = $<HTMLCanvasElement>('cv');
 const ctx = cv.getContext('2d')!;
 
 // ─── 맵 읽고 쓰기 ──────────────────────────────────────
+
+const DRAFT_BASE_KEY = `${DRAFT_KEY}-base`;
+
+/** 글자의 짧은 지문 (초안이 어느 저장본에서 시작했는지 비교용) */
+function textHash(s: string) {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = (Math.imul(h, 33) ^ s.charCodeAt(i)) | 0;
+  return `${s.length}:${h >>> 0}`;
+}
 
 function setMap(m: MapFile) {
   map = structuredClone(m);
@@ -123,6 +145,7 @@ function changed() {
   const text = currentText();
   try {
     localStorage.setItem(DRAFT_KEY, text);
+    localStorage.setItem(DRAFT_BASE_KEY, textHash(savedText)); // 이 초안이 어느 저장본에서 시작했는지
   } catch {
     /* 무시 */
   }
@@ -280,7 +303,7 @@ function tileColor(x: number, y: number) {
   if (t === 'T') return snow ? '#6f9a8a' : '#2f5a2a';
   if (t === 'R') return snow ? '#8a96a4' : '#5d5d63';
   const g = ground[y][x];
-  if (g === '=') return snow ? '#aebccb' : '#b59866';
+  if (g === '=') return snow ? '#aebccb' : zone === 5 ? '#7a4630' : '#b59866';
   if (g === '#') return '#9a9aa4';
   return GRASS[(zone || map.zoneStartsTx.length) - 1];
 }
@@ -734,7 +757,16 @@ async function init() {
   let start = savedText;
   try {
     const draft = localStorage.getItem(DRAFT_KEY);
-    if (draft && draft !== savedText && confirm('저장하지 않은 편집 내용이 있습니다. 이어서 할까요? (취소하면 저장된 맵을 엽니다)')) start = draft;
+    const base = localStorage.getItem(DRAFT_BASE_KEY);
+    if (draft && draft !== savedText) {
+      if (base === textHash(savedText)) {
+        if (confirm('저장하지 않은 편집 내용이 있습니다. 이어서 할까요? (취소하면 저장된 맵을 엽니다)')) start = draft;
+      } else {
+        // 초안을 만든 뒤에 저장된 맵이 바뀌었다(다른 곳에서 저장했거나 코드로 다시 만듦). 예전 초안을 이어서 저장하면 새 내용이 사라지므로 묻지 않고 저장본을 연다
+        localStorage.setItem(`${DRAFT_KEY}-old`, draft);
+        setTimeout(() => toast('저장된 맵이 바뀌어서 예전 편집 초안 대신 저장된 맵을 열었습니다'), 300);
+      }
+    }
   } catch {
     /* 무시 */
   }

@@ -8,7 +8,7 @@ export const VIEW_H = 544;
 export const TICK_RATE = 60;
 export const SNAPSHOT_EVERY = 3; // 60/3 = 초당 20회 전송
 export const REVIVE_TIME = 2;
-export const ZONE_NAMES = ['초록 숲', '고블린 협곡', '얼어붙은 설원', '오크 요새'];
+export const ZONE_NAMES = ['초록 숲', '고블린 협곡', '얼어붙은 설원', '오크 요새', '불타는 화산'];
 
 // ─── 직업 ────────────────────────────────────────────
 
@@ -209,8 +209,19 @@ export function xpForLevel(level: number): number {
 
 // ─── 적 ──────────────────────────────────────────────
 
+/**
+ * 몬스터 행동 방식.
+ * hop: 튀어 오르며 다가온다(슬라임) · melee: 붙어서 몸으로 친다 · ranged: 거리를 두고 쏜다 ·
+ * heavy: 몸이 깜빡인 뒤 크게 내려친다 · dash: 멀리서 힘을 모았다가 돌진해 벤다 ·
+ * frost: 거리를 두고 냉기 구슬(맞으면 느려짐)을 쏜다 · bomb: 플레이어 발밑에 화염탄을 떨어뜨린다
+ */
+export type EnemyAI = 'hop' | 'melee' | 'ranged' | 'heavy' | 'dash' | 'frost' | 'bomb' | 'boss';
+
 export interface EnemyDef {
   name: string;
+  ai: EnemyAI;
+  heavy?: boolean; // 묵직한 적: 맞아도 잠깐만 멈칫하고, 내려치기 준비(windup)는 기절시켜야만 끊긴다
+  knock?: number; // 넉백을 받는 비율 (기본 1, 작을수록 덜 밀린다)
   r: number; // 충돌 반지름. 길찾기가 타일 단위라 보스 외에는 지름이 한 칸(32)보다 작아야 좁은 틈을 지나간다.
   height: number; // 키 (머리 위 체력바 위치 기준, 월드 px)
   hp: number;
@@ -224,11 +235,26 @@ export interface EnemyDef {
 
 // 몬스터가 많은 대신 마리당 경험치·돈·장비 드랍은 낮게 잡았다 (한 판 동안 얻는 총량이 너무 커지지 않도록)
 export const ENEMIES: Record<EnemyKind, EnemyDef> = {
-  slime: { name: '슬라임', r: 13, height: 22, hp: 40, atk: 9, def: 0, speed: 65, xp: 7, gold: 3, dropRate: 0.09 },
-  goblin: { name: '고블린', r: 11, height: 36, hp: 62, atk: 13, def: 2, speed: 110, xp: 12, gold: 4, dropRate: 0.13 },
-  skeleton: { name: '해골 궁수', r: 11, height: 46, hp: 52, atk: 11, def: 1, speed: 58, xp: 15, gold: 6, dropRate: 0.17 },
-  orc: { name: '오크 전사', r: 15, height: 56, hp: 200, atk: 20, def: 6, speed: 72, xp: 36, gold: 18, dropRate: 0.5 },
-  boss: { name: '흑룡', r: 40, height: 110, hp: 3300, atk: 55, def: 12, speed: 85, xp: 0, gold: 0, dropRate: 1 },
+  slime: { name: '슬라임', ai: 'hop', r: 13, height: 22, hp: 40, atk: 9, def: 0, speed: 65, xp: 7, gold: 3, dropRate: 0.09 },
+  goblin: { name: '고블린', ai: 'melee', r: 11, height: 36, hp: 62, atk: 13, def: 2, speed: 110, xp: 12, gold: 4, dropRate: 0.13 },
+  skeleton: { name: '해골 궁수', ai: 'ranged', r: 11, height: 46, hp: 52, atk: 11, def: 1, speed: 58, xp: 15, gold: 6, dropRate: 0.17 },
+  orc: { name: '오크 전사', ai: 'heavy', heavy: true, knock: 0.35, r: 15, height: 56, hp: 200, atk: 20, def: 6, speed: 72, xp: 36, gold: 18, dropRate: 0.5 },
+  boss: { name: '흑룡', ai: 'boss', r: 40, height: 110, hp: 3600, atk: 58, def: 13, speed: 85, xp: 0, gold: 0, dropRate: 1 },
+  // 1구역: 작고 빠른 졸개 무리, 돌을 던지는 투척병
+  hound: { name: '퍼그 졸개', ai: 'melee', r: 10, height: 30, hp: 34, atk: 8, def: 0, speed: 150, xp: 6, gold: 2, dropRate: 0.06 },
+  thrower: { name: '고블린 투척병', ai: 'ranged', r: 11, height: 34, hp: 45, atk: 10, def: 1, speed: 70, xp: 13, gold: 5, dropRate: 0.12 },
+  // 2구역: 튼튼한 산적, 멀리서 돌진해 베는 암살자
+  bandit: { name: '협곡 산적', ai: 'melee', r: 12, height: 44, hp: 110, atk: 15, def: 3, speed: 95, xp: 20, gold: 9, dropRate: 0.2 },
+  assassin: { name: '암살자', ai: 'dash', r: 11, height: 40, hp: 70, atk: 18, def: 2, speed: 115, xp: 22, gold: 10, dropRate: 0.2 },
+  // 3구역: 느리고 묵직한 약탈자, 냉기로 발을 묶는 마녀
+  raider: { name: '설원 약탈자', ai: 'heavy', heavy: true, knock: 0.5, r: 14, height: 48, hp: 150, atk: 18, def: 4, speed: 75, xp: 28, gold: 12, dropRate: 0.3 },
+  iceWitch: { name: '얼음 마녀', ai: 'frost', r: 11, height: 50, hp: 60, atk: 12, def: 1, speed: 60, xp: 24, gold: 12, dropRate: 0.25 },
+  // 4구역: 방어가 높은 흑기사, 느리지만 질긴 망자 무리
+  darkKnight: { name: '흑기사', ai: 'heavy', heavy: true, knock: 0.3, r: 14, height: 50, hp: 170, atk: 19, def: 9, speed: 70, xp: 34, gold: 16, dropRate: 0.4 },
+  zombie: { name: '망자 병사', ai: 'melee', knock: 0.6, r: 12, height: 40, hp: 120, atk: 14, def: 2, speed: 48, xp: 18, gold: 6, dropRate: 0.15 },
+  // 5구역: 강한 불꽃 기사, 발밑에 화염탄을 떨어뜨리는 술사
+  flameKnight: { name: '불꽃 기사', ai: 'heavy', heavy: true, knock: 0.3, r: 14, height: 50, hp: 200, atk: 22, def: 7, speed: 80, xp: 40, gold: 20, dropRate: 0.45 },
+  pyromancer: { name: '화염 술사', ai: 'bomb', r: 11, height: 50, hp: 70, atk: 16, def: 2, speed: 60, xp: 30, gold: 16, dropRate: 0.3 },
 };
 
 // ─── 회복 음식 / 상점 ──────────────────────────────────
@@ -278,6 +304,7 @@ export const ELITES: EliteDef[][] = [
   [{ kind: 'goblin', name: '고블린 대장', hp: 300, atk: 17, def: 5 }, { kind: 'skeleton', name: '해골 저격수', hp: 280, atk: 16, def: 4 }],
   [{ kind: 'skeleton', name: '해골 저격수', hp: 340, atk: 18, def: 5 }, { kind: 'orc', name: '오크 광전사', hp: 420, atk: 22, def: 8 }],
   [{ kind: 'orc', name: '오크 광전사', hp: 460, atk: 24, def: 9 }, { kind: 'orc', name: '오크 족장', hp: 540, atk: 27, def: 10 }],
+  [{ kind: 'orc', name: '용암 광전사', hp: 500, atk: 25, def: 10 }, { kind: 'skeleton', name: '화염 저격수', hp: 420, atk: 22, def: 8 }],
 ];
 
 /**
@@ -288,7 +315,8 @@ export const GATE_KEEPERS: EliteDef[] = [
   { kind: 'goblin', name: '숲의 문지기', hp: 430, atk: 17, def: 5 },
   { kind: 'skeleton', name: '협곡의 문지기', hp: 480, atk: 20, def: 6 },
   { kind: 'orc', name: '설원의 문지기', hp: 580, atk: 26, def: 9 },
-  { kind: 'orc', name: '흑룡의 문지기', hp: 650, atk: 28, def: 10 }, // 구역 보정 후에도 흑룡보다 약하게,
+  { kind: 'orc', name: '요새의 문지기', hp: 650, atk: 28, def: 10 },
+  { kind: 'orc', name: '흑룡의 문지기', hp: 620, atk: 26, def: 11 }, // 보스 방 입구. 구역 보정 후에도 흑룡보다 약하게
 ];
 
 export const ELITE = {
@@ -299,8 +327,14 @@ export const ELITE = {
 };
 
 /** 구역이 깊어질수록 적이 강해진다. */
+// 구역별 적 능력치 배율 ([z - 1] = z구역). 앞 구역(1·2)도 얕보지 못하게 바닥을 올려 두었다
+const ZONE_HP = [1.4, 1.95, 2.2, 2.8, 3.3];
+const ZONE_ATK = [1.3, 1.7, 1.96, 2.44, 2.75];
+const ZONE_DEF = [1, 2, 2, 3, 4];
+
 export function zoneScale(zone: number) {
-  return { hp: 1 + 0.6 * (zone - 1), atk: 1 + 0.48 * (zone - 1), def: zone - 1, xp: 1 + 0.5 * (zone - 1) };
+  const i = Math.max(0, Math.min(ZONE_HP.length - 1, zone - 1));
+  return { hp: ZONE_HP[i], atk: ZONE_ATK[i], def: ZONE_DEF[i], xp: 1 + 0.5 * (zone - 1) };
 }
 
 /** 인원수가 많을수록 적 체력이 늘어난다. */
