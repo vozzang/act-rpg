@@ -122,6 +122,7 @@ export interface Enemy extends Body {
   hurt: number; // 피격 번쩍임
   stun: number; // 넉백·기절 중에는 AI가 멈춘다
   slow: number; // 둔화 남은 시간
+  rush: number; // 멀리서 공격받아 쏜 쪽으로 돌격하는 남은 시간 (빨라진다)
   taunt: number; // 도발 남은 시간
   tauntBy: string;
   timer: number; // AI용 범용 타이머

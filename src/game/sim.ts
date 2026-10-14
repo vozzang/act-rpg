@@ -18,6 +18,8 @@ const NAV_EVERY = 15; // 길찾기 지도 갱신 주기 (틱)
 const SNAPSHOT_RADIUS = 520; // 플레이어로부터 이 거리 안의 엔티티만 전송 (화면 대각선 + 여유)
 const CHILL_TIME = 2; // 얼음 마녀의 냉기 구슬에 맞으면 이 시간 동안
 const CHILL_SLOW = 0.6; // 이동 속도가 이만큼으로 줄어든다
+/** 근접 몬스터가 minDist보다 멀리서 맞으면 time초 동안 speed배로 쏜 플레이어에게 돌격한다 */
+const RUSH = { minDist: 160, time: 2.5, speed: 1.7 };
 
 export class Sim {
   readonly level: Level;
@@ -124,7 +126,7 @@ export class Sim {
       x: 0, y: 0, vx: 0, vy: 0, r: elite ? Math.min(15, def.r * 1.25) : def.r, aim: Math.PI,
       hp, maxHp: hp, atk: Math.round(base.atk * zs.atk), def: base.def + zs.def,
       xp: Math.round(def.xp * zs.xp * (elite ? ELITE.xp : 1)),
-      hurt: 0, stun: 0, slow: 0, taunt: 0, tauntBy: '', timer: 1 + this.rng(), state: 'move', stateTime: 0,
+      hurt: 0, stun: 0, slow: 0, rush: 0, taunt: 0, tauntBy: '', timer: 1 + this.rng(), state: 'move', stateTime: 0,
       z: 0, tx: 0, ty: 0,
     };
   }
@@ -824,6 +826,17 @@ export class Sim {
       // 힘을 모으는 중에 맞으면 끊긴다 (묵직한 적은 기절시켜야 끊긴다). 암살자의 돌진 준비도 여기서 끊을 수 있다
       if (e.state === 'windup' && (!def.heavy || stun > 0)) e.state = 'move';
     }
+    // 근접 몬스터가 멀리서 맞으면 쏜 쪽으로 돌격한다 (원거리 직업이 멀리서만 때려 몬스터가 다가오지도 못하는 일이 없도록)
+    const ai = ENEMIES[e.kind].ai;
+    if (by && !e.elite && (ai === 'melee' || ai === 'heavy' || ai === 'hop' || ai === 'dash') && dist(e.x, e.y, by.x, by.y) > RUSH.minDist) {
+      e.rush = RUSH.time;
+      e.active = true;
+      if (e.taunt <= 0) {
+        // 쏜 플레이어를 노린다 (수호자의 도발이 걸려 있으면 도발이 우선)
+        e.taunt = RUSH.time;
+        e.tauntBy = by.id;
+      }
+    }
     if (e.hp <= 0) this.killEnemy(e, by);
   }
 
@@ -870,6 +883,7 @@ export class Sim {
     e.hurt -= dt;
     e.stun -= dt;
     e.slow -= dt;
+    e.rush -= dt;
     e.taunt -= dt;
     e.timer -= dt;
     e.stateTime += dt;
@@ -902,8 +916,10 @@ export class Sim {
         }
 
         case 'melee':
-          this.chase(e, target, def.speed, e.r + target.r);
+          // 몸이 닿을 만큼 붙는다 (몸통 박치기 판정이 '닿은 거리 - 2'라서 딱 맞닿는 거리에서 멈추면 영영 못 때린다)
+          this.chase(e, target, def.speed, e.r + target.r - 6);
           e.aim = toTarget;
+          if (e.state === 'attack' && e.stateTime > 0.35) this.setState(e, 'move'); // 공격 동작을 보여 주는 시간
           break;
 
         case 'ranged':
@@ -925,15 +941,13 @@ export class Sim {
           break;
       }
     }
-    if (e.slow > 0 && e.stun <= 0) {
-      e.vx *= 0.5;
-      e.vy *= 0.5;
-    }
+    // 둔화(냉기 파동)는 느리게, 돌격(멀리서 맞음)은 빠르게. 이번 틱 이동에만 곱하고 되돌린다
+    const k = e.stun > 0 ? 1 : (e.slow > 0 ? 0.5 : 1) * (e.rush > 0 && e.state === 'move' ? RUSH.speed : 1);
+    e.vx *= k;
+    e.vy *= k;
     moveBody(this.level, e, dt);
-    if (e.slow > 0 && e.stun <= 0) {
-      e.vx *= 2;
-      e.vy *= 2;
-    }
+    e.vx /= k;
+    e.vy /= k;
   }
 
   private setState(e: Enemy, s: Enemy['state']) {
@@ -1191,7 +1205,10 @@ export class Sim {
       const mult = e.kind === 'boss' ? (e.state === 'charge' ? 1.4 : 1) : 0.8;
       for (const p of this.players) {
         if (p.dead || p.invuln > 0) continue;
-        if (dist(e.x, e.y, p.x, p.y) < e.r + p.r - 2) this.damagePlayer(p, e.atk * mult, e.x, e.y);
+        if (dist(e.x, e.y, p.x, p.y) >= e.r + p.r - 2) continue;
+        this.damagePlayer(p, e.atk * mult, e.x, e.y);
+        // 근접 몬스터는 때릴 때 공격 동작을 보여 준다 (화면이 state를 보고 공격 애니메이션을 튼다)
+        if (ENEMIES[e.kind].ai === 'melee' && e.state !== 'attack') this.setState(e, 'attack');
       }
     }
   }
