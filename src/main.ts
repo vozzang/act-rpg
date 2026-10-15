@@ -1,5 +1,6 @@
 // 로비(방 만들기/참가/직업 선택)와 게임 시작/종료를 관리한다.
 import { Sound } from './render/Sound';
+import { Music } from './render/Music';
 import Phaser from 'phaser';
 import { ATTR_KEYS, ATTR_NAMES, CLASSES, CLASS_ORDER, VIEW_H, VIEW_W, deriveStats } from './game/data';
 import type { ClassId, LobbyPlayer } from './game/types';
@@ -137,6 +138,9 @@ async function createRoom() {
     else if (msg.t === 'alloc') session?.onRemoteAlloc?.(id, msg.attr);
     else if (msg.t === 'buy') session?.onRemoteBuy?.(id, msg.shop, msg.idx);
     else if (msg.t === 'slot') session?.onRemoteSlot?.(id, msg.idx);
+    else if (msg.t === 'move') session?.onRemoteMove?.(id, msg.from, msg.idx);
+    else if (msg.t === 'dropItem') session?.onRemoteDrop?.(id, msg.from, msg.idx);
+    else if (msg.t === 'forge') session?.onRemoteForge?.(id, msg.shop, msg.picks, msg.random);
     else if (game) return;
     else if (msg.t === 'hello') {
       const p = lobby.find((p) => p.id === id);
@@ -274,6 +278,7 @@ function endGame() {
   game?.destroy(true);
   game = null;
   session = null;
+  Music.play('town'); // 로비로 돌아오면 로비 곡
 }
 
 // ─── 초기화 ──────────────────────────────────────────
@@ -289,6 +294,19 @@ try {
 } catch {
   /* 무시 */
 }
+// 배경음악 크기 (0~100%, 이 브라우저에 기억. 바로 적용)
+{
+  const mus = $<HTMLInputElement>('music');
+  const show = () => ($('music-v').textContent = mus.value === '0' ? '끔' : `${mus.value}%`);
+  mus.value = String(Math.round(Music.volume * 100));
+  show();
+  mus.oninput = () => {
+    Music.volume = Number(mus.value) / 100;
+    show();
+  };
+}
+Music.play('town'); // 로비 곡 (첫 클릭·키 입력 때 시작한다)
+if (import.meta.env.DEV) Object.assign(window, { music: Music }); // 개발 중 콘솔에서 확인용
 // 효과음 크기 (0~100%, 이 브라우저에 기억. 바꾸면 다음 게임부터 적용)
 {
   const vol = $<HTMLInputElement>('volume');

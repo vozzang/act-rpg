@@ -9,7 +9,10 @@ export type ClientMsg =
   | { t: 'input'; input: InputState }
   | { t: 'alloc'; attr: AttrKey }
   | { t: 'buy'; shop: number; idx: number }
-  | { t: 'slot'; idx: number }; // 아이템 상자 칸 사용 (음식 먹기 / 장비 내려놓기)
+  | { t: 'slot'; idx: number } // 아이템 상자 칸 사용 (음식 먹기 / 장비를 가방에)
+  | { t: 'move'; from: 'inv' | 'bag'; idx: number } // 장비를 상자 ↔ 가방으로 옮기기
+  | { t: 'dropItem'; from: 'inv' | 'bag'; idx: number } // 장비 버리기
+  | { t: 'forge'; shop: number; picks: { from: 'inv' | 'bag'; idx: number }[]; random: boolean }; // 대장간 조합
 
 export type HostMsg =
   | { t: 'lobby'; players: LobbyPlayer[]; you: string }

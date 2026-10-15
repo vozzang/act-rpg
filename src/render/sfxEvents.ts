@@ -96,6 +96,10 @@ export function playEventSound(sfx: Sound, e: GameEvent, myId: string) {
     case 'revive':
       sfx.play('revive', { volume: e.pid === myId ? 0.7 : 0.4, vary: 0 });
       break;
+    case 'forged': // 망치로 내려치는 소리와 장비 소리
+      sfx.play('hitHeavy', { volume: e.pid === myId ? 0.8 : 0.3, rate: 0.9 });
+      if (e.pid === myId) sfx.play('equip', { volume: 0.6 });
+      break;
     case 'gate':
       sfx.play('gate', { at, volume: 0.9, rate: 0.8 });
       sfx.play('latch', { at, volume: 0.6 });

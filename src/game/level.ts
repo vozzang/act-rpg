@@ -233,6 +233,13 @@ export function buildLevel(seed: number): Level {
       setTile(tx, ty, T_SHOP);
       shops.push({ x: (tx + 0.5) * TILE, y: (ty + 0.5) * TILE, zone: zoneOfTxRaw(tx), type });
     });
+    // 짝수 구역 입구에는 방어 상점 오른쪽에 대장간
+    if (zoneOfTxRaw(x0) % 2 === 0) {
+      const tx = x0 + SHOP_ORDER.length * SHOP_GAP;
+      for (let dy = 0; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) floor(tx + dx, ty + dy);
+      setTile(tx, ty, T_SHOP);
+      shops.push({ x: (tx + 0.5) * TILE, y: (ty + 0.5) * TILE, zone: zoneOfTxRaw(tx), type: 'forge' });
+    }
   }
 
   // 6) 문: 구역마다 출구(다음 구역 입구, 마지막 구역은 보스 방 입구)를 막는다. 막는 칸은 맨 끝(8단계)에 채운다

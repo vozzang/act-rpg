@@ -286,6 +286,8 @@ export const FOOD = {
 
 /** 아이템 상자 칸 수 */
 export const INV_SIZE = 6;
+/** 가방 칸 수 (장비만, 능력치에 더해지지 않는다) */
+export const BAG_SIZE = 6;
 
 export const SHOP = {
   range: 80, // 상인과 이 거리 안에 있어야 살 수 있다
@@ -301,7 +303,87 @@ export const SHOP_TYPES: Record<ShopType, { name: string; color: number }> = {
   heal: { name: '회복 상점', color: 0x50d070 },
   attack: { name: '공격 상점', color: 0xff6040 },
   defense: { name: '방어 상점', color: 0x5aa8ff },
+  forge: { name: '대장간', color: 0xffa040 },
 };
+
+// ─── 대장간 ───────────────────────────────────────────
+
+/** 대장간: 장비 2~3개를 넣어 조합한다. 값(fee)은 대장간이 있는 구역 × feePerZone */
+export const FORGE = { min: 2, max: 3, feePerZone: 15 };
+
+/** 조합법 재료: noun으로 장비 이름(대검·반지 등)을, slot으로 종류(무기·방어구·장신구)를 맞춘다 */
+export interface RecipeNeed {
+  noun?: string;
+  slot?: Slot;
+}
+
+/** 조합법: 재료가 정확히 맞으면 정해진 고유 장비가 나온다 (재료 중 가장 깊은 구역 기준 전설 등급, mult배 수치) */
+export interface Recipe {
+  title: string; // 만들어지는 장비 이름
+  needs: RecipeNeed[];
+  slot: Slot;
+  /** 만들어지는 장비 수치. base는 그 구역 전설 등급의 기본 수치 */
+  stats: (base: { atk: number; def: number; attr: number; crit: number; hp: number }) => ItemStats;
+}
+
+export const RECIPES: Recipe[] = [
+  { title: '거인의 대검', needs: [{ noun: '대검' }, { noun: '대검' }], slot: 'weapon', stats: (b) => ({ atk: Math.round(b.atk * 1.5), str: Math.round(b.attr * 1.6), crit: 0.05 }) },
+  { title: '바람의 장궁', needs: [{ noun: '장궁' }, { noun: '장궁' }], slot: 'weapon', stats: (b) => ({ atk: Math.round(b.atk * 1.5), dex: Math.round(b.attr * 1.6), crit: 0.08 }) },
+  { title: '현자의 지팡이', needs: [{ noun: '지팡이' }, { noun: '지팡이' }], slot: 'weapon', stats: (b) => ({ atk: Math.round(b.atk * 1.5), int: Math.round(b.attr * 1.6), maxHp: Math.round(b.hp * 0.5) }) },
+  { title: '삼위일체의 검', needs: [{ noun: '대검' }, { noun: '장궁' }, { noun: '지팡이' }], slot: 'weapon', stats: (b) => ({ atk: Math.round(b.atk * 1.7), str: b.attr, dex: b.attr, int: b.attr }) },
+  { title: '수호자의 판금', needs: [{ noun: '갑옷' }, { noun: '판금 갑옷' }], slot: 'armor', stats: (b) => ({ def: Math.round(b.def * 1.6), vit: Math.round(b.attr * 1.5), str: Math.round(b.attr * 0.7) }) },
+  { title: '생명의 부적', needs: [{ noun: '부적' }, { noun: '부적' }], slot: 'accessory', stats: (b) => ({ maxHp: Math.round(b.hp * 1.8), vit: Math.round(b.attr * 1.2) }) },
+  { title: '치명의 반지', needs: [{ noun: '반지' }, { noun: '반지' }], slot: 'accessory', stats: (b) => ({ crit: Math.round(b.crit * 1.8 * 100) / 100, atk: Math.round(b.atk * 0.5) }) },
+  { title: '용사의 목걸이', needs: [{ noun: '반지' }, { noun: '부적' }], slot: 'accessory', stats: (b) => ({ atk: Math.round(b.atk * 0.5), def: Math.round(b.def * 0.5), crit: b.crit, maxHp: b.hp }) },
+  { title: '무쇠 대장장이의 망치', needs: [{ slot: 'weapon' }, { slot: 'weapon' }, { slot: 'weapon' }], slot: 'weapon', stats: (b) => ({ atk: Math.round(b.atk * 1.4), str: b.attr, vit: b.attr }) },
+  { title: '철벽의 갑주', needs: [{ slot: 'armor' }, { slot: 'armor' }, { slot: 'armor' }], slot: 'armor', stats: (b) => ({ def: Math.round(b.def * 1.5), vit: Math.round(b.attr * 1.3), maxHp: b.hp }) },
+];
+
+/** 재료 설명 (예: "대검 + 대검") */
+export function recipeText(r: Recipe) {
+  const slotName: Record<Slot, string> = { weapon: '무기', armor: '방어구', accessory: '장신구' };
+  return r.needs.map((n) => n.noun ?? `아무 ${slotName[n.slot!]}`).join(' + ');
+}
+
+/** 고른 장비들에 정확히 맞는 조합법 (구체적인 이름 재료가 많은 조합법 우선). 없으면 null */
+export function matchRecipe(items: Item[]): Recipe | null {
+  const fits = (r: Recipe) => {
+    if (r.needs.length !== items.length) return false;
+    // 이름 재료부터 짝을 지어 보고, 남은 장비를 종류 재료에 맞춘다
+    const left = [...items];
+    const needs = [...r.needs].sort((a, b) => Number(!!b.noun) - Number(!!a.noun));
+    for (const n of needs) {
+      const i = left.findIndex((it) => (n.noun ? it.noun === n.noun && !it.title : true) && (n.slot ? it.slot === n.slot : true));
+      if (i < 0) return false;
+      left.splice(i, 1);
+    }
+    return true;
+  };
+  const named = (r: Recipe) => r.needs.filter((n) => n.noun).length;
+  return [...RECIPES].sort((a, b) => named(b) - named(a)).find(fits) ?? null;
+}
+
+/** 조합법으로 만드는 장비 (재료 중 가장 깊은 구역의 전설 등급 수치를 바탕으로) */
+export function recipeItem(r: Recipe, zone: number, id: number): Item {
+  const m = RARITY.legendary.mult;
+  const base = {
+    atk: Math.round((3 + zone * 4) * m),
+    def: Math.round((1.5 + zone * 2) * m),
+    attr: Math.max(1, Math.round((1 + zone * 1.5) * m)),
+    crit: Math.round((0.02 + 0.01 * zone) * m * 100) / 100,
+    hp: Math.round(15 * zone * m),
+  };
+  return { id, slot: r.slot, rarity: 'legendary', zone, title: r.title, stats: r.stats(base) };
+}
+
+/** 랜덤 조합 결과 등급: 재료 중 가장 좋은 등급에서 시작해 재료가 많을수록, 같은 등급끼리일수록 한 단계 오를 확률이 크다 */
+export function randomForgeRarity(items: Item[], rng: () => number): Rarity {
+  const order: Rarity[] = ['common', 'rare', 'epic', 'legendary'];
+  const best = Math.max(...items.map((it) => order.indexOf(it.rarity)));
+  const same = items.every((it) => it.rarity === items[0].rarity);
+  const up = (items.length >= 3 ? 0.55 : 0.25) + (same ? 0.15 : 0);
+  return order[Math.min(order.length - 1, best + (rng() < up ? 1 : 0))];
+}
 
 /**
  * 상점 지점별 고정 판매 목록. [z - 1] = z구역 지점(출발 지점은 1구역)의 등급.
@@ -326,6 +408,7 @@ export function shopStock(type: ShopType, zone: number, nextId: () => number): S
   const t = SHOP_TIERS[Math.min(zone, SHOP_TIERS.length) - 1];
   const s = (r: Rarity) => fixedStats(zone, r); // 기본 품목
   const sp = (r: Rarity) => fixedStats(zone, r, t.boost ?? 1); // premium 품목
+  if (type === 'forge') return []; // 대장간은 파는 물건이 없다
   if (type === 'heal') return [food('hpFood'), food('mpFood')];
   if (type === 'attack') {
     // 직업별 주 능력치에 맞춘 무기 셋 (이름이 쓰임새를 알려 준다)과 공격 장신구
@@ -490,6 +573,7 @@ export function makeItem(id: number, zone: number, rng: () => number, weights?: 
 }
 
 export function itemName(item: Item, cls: ClassId): string {
+  if (item.title) return item.title;
   const mat = MATERIALS[Math.min(item.zone, MATERIALS.length) - 1];
   return `${mat} ${item.noun ?? CLASSES[cls].weaponNoun}`;
 }

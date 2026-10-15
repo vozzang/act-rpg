@@ -1,0 +1,9 @@
+Background music (converted to 96 kbps AAC .m4a for this game)
+
+License: Creative Commons Zero, CC0 1.0 Universal (public domain)
+https://creativecommons.org/publicdomain/zero/1.0/
+
+- town.m4a   ← TownTheme.mp3                  (lobby)
+- forest.m4a ← GameMusic_ForestTheme_24.mp3    (zones 1·2·6·9)
+- field.m4a  ← the_field_of_dreams.mp3         (zones 3·4·5·7·8·10, ending)
+- battle.m4a ← battleThemeA.mp3                (mid-boss / gate keeper / dragon fights)

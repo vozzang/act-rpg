@@ -5,7 +5,9 @@ import { SHOP_ORDER, buildLevel } from '../game/level';
 import { PROPS, PROP_KINDS, type PropGroup, type PropKind } from '../game/props';
 
 /** 지도 위 상점 칸 글자: 회복 · 공격 · 방어 */
-const SHOP_LETTER = { heal: '회', attack: '공', defense: '방' } as const;
+const SHOP_LETTER = { heal: '회', attack: '공', defense: '방', forge: '대' } as const;
+/** 상점 도구로 누를 때마다 바뀌는 순서 (대장간 포함) */
+const SHOP_CYCLE = [...SHOP_ORDER, 'forge'] as const;
 import { mapFromLevel, stringifyMap, validateMap, zoneAt, type MapFile, type SpawnType } from '../game/mapfile';
 import { DRAFT_KEY } from '../game/world';
 import { View3D } from './view3d';
@@ -282,7 +284,7 @@ function place(x: number, y: number) {
   if (tool === 'shop') {
     // 빈 칸: 회복 상점을 놓는다. 있는 상점을 누르면 종류가 회복 → 공격 → 방어로 바뀐다 (지우기는 오른쪽 클릭)
     const sh = map.shops.find((s) => s.x === x && s.y === y);
-    if (sh) sh.type = SHOP_ORDER[(SHOP_ORDER.indexOf(sh.type ?? 'attack') + 1) % SHOP_ORDER.length];
+    if (sh) sh.type = SHOP_CYCLE[(SHOP_CYCLE.indexOf(sh.type ?? 'attack') + 1) % SHOP_CYCLE.length];
     else {
       tiles[y][x] = '.';
       map.shops.push({ x, y, type: 'heal' });

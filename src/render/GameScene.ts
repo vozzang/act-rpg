@@ -12,7 +12,9 @@ import { EMPTY_INPUT, type AttrKey, type GameEvent, type InputState, type Player
 import type { Session } from '../session';
 import { Effects } from './Effects';
 import { StoryPanel } from './StoryPanel';
+import { ForgePanel } from './ForgePanel';
 import { Sound } from './Sound';
+import { Music, zoneTrack } from './Music';
 import { playEventSound } from './sfxEvents';
 import { STORY_BOSS, STORY_ENDING, STORY_INTRO, STORY_ZONES } from '../game/story';
 import { CharMenu } from './CharMenu';
@@ -38,9 +40,11 @@ export class GameScene extends Phaser.Scene {
   private shopPanel!: ShopPanel;
   private charMenu!: CharMenu;
   private story!: StoryPanel;
+  private forgePanel!: ForgePanel;
   private sfx!: Sound;
   private uiSoundState = ''; // 상점·메뉴·스토리 쪽이 바뀌었는지 비교해 효과음을 낸다
   private endSoundPlayed = false;
+  private battleUntil = 0; // 중간보스와 싸운 뒤 전투 곡을 조금 더 이어 갈 시각 (초)
   // 스토리 진행: 인트로를 띄웠는지, 몇 구역까지 이야기를 봤는지, 흑룡·엔딩 이야기를 봤는지
   private storyStarted = false;
   private storyZone = 0;
@@ -100,7 +104,8 @@ export class GameScene extends Phaser.Scene {
     this.hud = new Hud(this, this.world, s.myId, (attr) => this.allocate(attr), (idx) => this.useSlot(idx), this.map.top);
     this.effects = new Effects(this, this.world, s.myId);
     this.shopPanel = new ShopPanel(this, (idx) => this.buy(idx));
-    this.charMenu = new CharMenu(this, (attr) => this.allocate(attr), (idx) => this.useSlot(idx));
+    this.charMenu = new CharMenu(this, (attr) => this.allocate(attr), (idx) => this.useSlot(idx), (from, idx) => this.moveItem(from, idx), (from, idx) => this.dropItem(from, idx));
+    this.forgePanel = new ForgePanel(this, (picks, random) => this.forge(picks, random));
     this.story = new StoryPanel(this);
     this.sfx = new Sound();
     const stopSfx = () => this.sfx.destroy();
@@ -116,7 +121,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     const kb = this.input.keyboard!;
-    this.keys = kb.addKeys('W,A,S,D,UP,DOWN,LEFT,RIGHT,J,K,Z,X,C,Q,R,I,SPACE,E,F,ENTER,ESC,TAB,M,ONE,TWO,THREE,FOUR,FIVE,SIX,SEVEN,EIGHT,NINE,ZERO,SHIFT') as Record<string, Phaser.Input.Keyboard.Key>;
+    this.keys = kb.addKeys('W,A,S,D,UP,DOWN,LEFT,RIGHT,J,K,Z,X,C,Q,R,I,SPACE,E,F,ENTER,ESC,DELETE,TAB,M,ONE,TWO,THREE,FOUR,FIVE,SIX,SEVEN,EIGHT,NINE,ZERO,SHIFT') as Record<string, Phaser.Input.Keyboard.Key>;
     kb.addCapture('SPACE,UP,DOWN,LEFT,RIGHT,TAB');
     this.input.mouse?.disableContextMenu();
     kb.on('keydown', () => (this.device = 'kbm'));
@@ -137,6 +142,9 @@ export class GameScene extends Phaser.Scene {
       s.onRemoteAlloc = (id, attr) => this.sim!.allocate(id, attr);
       s.onRemoteBuy = (id, shop, idx) => this.sim!.buy(id, shop, idx);
       s.onRemoteSlot = (id, idx) => this.sim!.useSlot(id, idx);
+      s.onRemoteMove = (id, from, idx) => this.sim!.moveItem(id, from, idx);
+      s.onRemoteDrop = (id, from, idx) => this.sim!.dropItem(id, from, idx);
+      s.onRemoteForge = (id, shop, picks, random) => this.sim!.forge(id, shop, picks, random);
       s.onPlayerLeft = (id) => this.sim!.removePlayer(id);
       if (s.host) this.startBackgroundTicker();
     } else {
@@ -195,6 +203,7 @@ export class GameScene extends Phaser.Scene {
       Phaser.Input.Keyboard.JustDown(this.keys.M) || this.pad.pressed(BTN.VIEW) || !!this.touch?.consume('map'));
     for (const e of events) this.effects.play(e, snap, this.me);
     this.playSounds(events, snap);
+    this.updateMusic(snap);
     this.touch?.update(this.me); // 버튼 그리기, '방금 눌림' 초기화 (이번 프레임에 다 쓴 뒤에)
     this.updateStory(snap);
     this.story.update(dt, this.device);
@@ -205,6 +214,20 @@ export class GameScene extends Phaser.Scene {
       this.effects.showEnd(snap, canReturn ? this.session.backToLobby : null);
       if (canReturn && (Phaser.Input.Keyboard.JustDown(this.keys.ENTER) || this.pad.pressed(BTN.A))) this.session.backToLobby();
     }
+  }
+
+  /**
+   * 배경음악: 구역 곡(숲·들판), 중간보스·문지기·흑룡과 싸울 때는 전투 곡, 승리하면 들판 곡(엔딩), 전멸하면 멈춘다.
+   * 전투 곡은 싸움이 끝나도 4초 더 이어 가서 곡이 자꾸 바뀌지 않게 한다.
+   */
+  private updateMusic(s: Snapshot) {
+    const now = this.time.now / 1000;
+    if (s.status === 'victory') return Music.play('field');
+    if (s.status === 'defeat') return Music.play(null);
+    const me = this.me;
+    const elite = !!me && s.enemies.some((e) => e.elite && e.hp > 0 && Math.hypot(e.x - me.x, e.y - me.y) < 450);
+    if (s.boss || elite) this.battleUntil = now + 4;
+    Music.play(now < this.battleUntil ? 'battle' : zoneTrack(s.zone));
   }
 
   /** 이벤트·창 열고 닫기·스토리 쪽 넘김·승패에 맞는 효과음 */
@@ -302,7 +325,7 @@ export class GameScene extends Phaser.Scene {
   //   View 전체 지도 · Menu 캐릭터 메뉴 · 메뉴/상점 안에서는 방향패드 고르기, A 실행, B 닫기
 
   private get uiOpen() {
-    return this.shopPanel.openId !== null || this.charMenu.isOpen || this.story.isOpen;
+    return this.shopPanel.openId !== null || this.forgePanel.openId !== null || this.charMenu.isOpen || this.story.isOpen;
   }
 
   private readInput(): InputState {
@@ -451,12 +474,14 @@ export class GameScene extends Phaser.Scene {
     // 캐릭터 메뉴
     if (just(this.keys.I) || pad.pressed(BTN.MENU) || this.touch?.consume('menu')) {
       shopPanel.close();
+      this.forgePanel.close();
       menu.toggle();
     } else if (menu.isOpen && backPressed) menu.close();
     if (menu.isOpen) {
       if (!me) return menu.close();
       if (dpad.x || dpad.y) menu.navigate(dpad.x, dpad.y);
       if (pad.pressed(BTN.A)) menu.confirm();
+      if (pad.pressed(BTN.X) || just(this.keys.DELETE)) menu.drop();
       menu.update(me, this.device);
       return;
     }
@@ -465,6 +490,21 @@ export class GameScene extends Phaser.Scene {
     const near = this.nearShop(s);
     const itemUnderFoot = me && s.drops.some((d) => d.kind === 'item' && Math.hypot(d.x - me.x, d.y - me.y) < 36);
     const interact = just(this.keys.E) || just(this.keys.F) || pad.pressed(BTN.LT) || !!this.touch?.consume('interact');
+    // 대장간
+    const forge = this.forgePanel;
+    if (forge.openId !== null) {
+      const shop = s.shops.find((sh) => sh.id === forge.openId);
+      if (!shop || !me || me.dead || Math.hypot(shop.x - me.x, shop.y - me.y) > SHOP.range + 30 || interact || backPressed) {
+        forge.close();
+        return;
+      }
+      if (dpad.y) forge.navigate(dpad.y);
+      if (pad.pressed(BTN.A)) forge.toggleCursor();
+      if (pad.pressed(BTN.X)) forge.submit(false);
+      if (pad.pressed(BTN.Y)) forge.submit(true);
+      forge.update(shop, me, this.device);
+      return;
+    }
     if (shopPanel.openId !== null) {
       const shop = s.shops.find((sh) => sh.id === shopPanel.openId);
       if (!shop || !me || me.dead || Math.hypot(shop.x - me.x, shop.y - me.y) > SHOP.range + 30 || interact || backPressed) {
@@ -478,7 +518,8 @@ export class GameScene extends Phaser.Scene {
       if (pad.pressed(BTN.A)) shopPanel.confirm();
       shopPanel.update(shop, me, this.device);
     } else if (interact && near && !itemUnderFoot) {
-      shopPanel.open(near.id);
+      if (near.type === 'forge') forge.open(near.id);
+      else shopPanel.open(near.id);
     }
   }
 
@@ -486,6 +527,24 @@ export class GameScene extends Phaser.Scene {
   private useSlot(idx: number) {
     if (this.sim) this.sim.useSlot(this.session.myId, idx);
     else this.session.client!.send({ t: 'slot', idx });
+  }
+
+  /** 장비를 상자 ↔ 가방으로 */
+  private moveItem(from: 'inv' | 'bag', idx: number) {
+    if (this.sim) this.sim.moveItem(this.session.myId, from, idx);
+    else this.session.client!.send({ t: 'move', from, idx });
+  }
+
+  private dropItem(from: 'inv' | 'bag', idx: number) {
+    if (this.sim) this.sim.dropItem(this.session.myId, from, idx);
+    else this.session.client!.send({ t: 'dropItem', from, idx });
+  }
+
+  private forge(picks: { from: 'inv' | 'bag'; idx: number }[], random: boolean) {
+    const id = this.forgePanel.openId;
+    if (id === null) return;
+    if (this.sim) this.sim.forge(this.session.myId, id, picks, random);
+    else this.session.client!.send({ t: 'forge', shop: id, picks, random });
   }
 
   private buy(idx: number) {

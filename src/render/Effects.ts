@@ -37,6 +37,13 @@ export class Effects {
         this.floatText(p.x, p.y, '회피!', '#a0e8ff', 15, 600);
         break;
       }
+      case 'forged': {
+        const pos = playerPos(e.pid);
+        if (!pos) break;
+        const name = itemName(e.item, pos.p.cls);
+        this.floatText(pos.x, pos.y - 10, `${e.recipe ? '조합 성공!' : '랜덤 조합!'} [${RARITY[e.item.rarity].name}] ${name}`, RARITY[e.item.rarity].color, 17, 1800);
+        break;
+      }
       case 'heal': {
         const p = at(e.x, e.y);
         this.floatText(p.x, p.y, `+${e.v}`, '#60ff80', 15);

@@ -1,7 +1,7 @@
 // 게임 시뮬레이션. 호스트에서만 실행되고, 클라이언트는 스냅샷을 받아 그리기만 한다.
 import {
-  AGGRO_RANGE, TICK_RATE, ATTR_EFFECT, ATTR_KEYS, CLASSES, ELITE, ELITES, ENEMIES, GATE_KEEPERS, FOOD, INV_SIZE, POINTS_PER_LEVEL, REVIVE_TIME, SHOP, SKILL, TILE, ZONE_NAMES,
-  deriveStats, makeItem, partyHpScale, type EliteDef, shopStock, totalAttrs, xpForLevel, zoneScale, type AttackDef,
+  AGGRO_RANGE, BAG_SIZE, FORGE, TICK_RATE, ATTR_EFFECT, ATTR_KEYS, CLASSES, ELITE, ELITES, ENEMIES, GATE_KEEPERS, FOOD, INV_SIZE, POINTS_PER_LEVEL, REVIVE_TIME, SHOP, SKILL, TILE, ZONE_NAMES,
+  deriveStats, makeItem, partyHpScale, type EliteDef, shopStock, matchRecipe, recipeItem, randomForgeRarity, totalAttrs, xpForLevel, zoneScale, type AttackDef,
 } from './data';
 import { mulberry32, openGate, zoneOfTx, type Level } from './level';
 import { gameLevel } from './world';
@@ -97,6 +97,7 @@ export class Sim {
       gold: 0,
       // 음식 먹는 법을 익히도록 HP·MP 음식을 하나씩 넣어 준다
       inv: [{ kind: 'hpFood', count: 1 }, { kind: 'mpFood', count: 1 }, ...Array<null>(INV_SIZE - 2).fill(null)],
+      bag: Array<null>(BAG_SIZE).fill(null),
       stats: { maxHp: 0, atk: 0, def: 0, crit: 0, haste: 0, dodge: 0, cdr: 0, maxMp: 0, mpRegen: 0 },
       atkCd: 0, atkAnim: 0, skillCds: [0, 0, 0, 0], dashTime: 0, dashSkill: 0, dashHits: [],
       guard: 0, guardReduce: 0, atkBuff: 0, chill: 0, mp: 0,
@@ -562,20 +563,117 @@ export class Sim {
   private tryPickup(p: Player) {
     const drop = this.drops.find((d) => d.kind === 'item' && dist(d.x, d.y, p.x, p.y) < 36);
     if (!drop || !drop.item) return;
-    if (!this.addItem(p, drop.item)) return this.notice(p, '아이템 상자가 가득 찼어요');
+    if (!this.addItem(p, drop.item)) return this.notice(p, '아이템 상자와 가방이 가득 찼어요');
     this.drops = this.drops.filter((d) => d !== drop);
   }
 
   // ─── 아이템 상자 ─────────────────────────────────────
 
-  /** 장비를 빈 칸에 넣는다. 자리가 없으면 false. */
+  /** 장비를 아이템 상자 빈 칸에 넣는다(바로 능력치에 더해진다). 상자가 차 있으면 가방에. 둘 다 없으면 false. */
   private addItem(p: Player, item: Item): boolean {
     const free = p.inv.indexOf(null);
-    if (free < 0) return false;
-    p.inv[free] = { kind: 'item', item };
-    this.recalcStats(p);
+    if (free >= 0) {
+      p.inv[free] = { kind: 'item', item };
+      this.recalcStats(p);
+      this.events.push({ t: 'equip', pid: p.id, item });
+      return true;
+    }
+    const bag = p.bag.indexOf(null);
+    if (bag < 0) return false;
+    p.bag[bag] = item;
     this.events.push({ t: 'equip', pid: p.id, item });
+    this.notice(p, '아이템 상자가 가득 차서 가방에 넣었어요');
     return true;
+  }
+
+  // ─── 가방 ─────────────────────────────────────────
+
+  /** 상자 장비 → 가방 (from 'inv'), 가방 → 상자 (from 'bag'). 상자에 든 장비만 능력치에 더해진다 */
+  moveItem(id: string, from: 'inv' | 'bag', idx: number) {
+    const p = this.playerById(id);
+    if (!p || p.dead) return;
+    if (from === 'inv') {
+      const sl = p.inv[idx];
+      if (!sl || sl.kind !== 'item') return;
+      const free = p.bag.indexOf(null);
+      if (free < 0) return this.notice(p, '가방이 가득 찼어요');
+      p.bag[free] = sl.item;
+      p.inv[idx] = null;
+    } else {
+      const item = p.bag[idx];
+      if (!item) return;
+      const free = p.inv.indexOf(null);
+      if (free < 0) return this.notice(p, '아이템 상자가 가득 찼어요');
+      p.inv[free] = { kind: 'item', item };
+      p.bag[idx] = null;
+    }
+    this.recalcStats(p);
+  }
+
+  /** 장비를 버린다 (발밑에 떨어뜨린다) */
+  dropItem(id: string, from: 'inv' | 'bag', idx: number) {
+    const p = this.playerById(id);
+    if (!p || p.dead) return;
+    let item: Item | null = null;
+    if (from === 'inv') {
+      const sl = p.inv[idx];
+      if (sl?.kind === 'item') {
+        item = sl.item;
+        p.inv[idx] = null;
+        this.recalcStats(p);
+      }
+    } else {
+      item = p.bag[idx];
+      p.bag[idx] = null;
+    }
+    if (!item) return;
+    this.spawnDrop({ kind: 'item', item }, p.x, p.y);
+    this.notice(p, '장비를 버렸어요');
+  }
+
+  // ─── 대장간 ───────────────────────────────────────
+
+  /**
+   * 대장간에서 고른 장비(상자·가방) 2~3개를 조합한다. random이 아니면 맞는 조합법이 있어야 하고 정해진 장비가 나온다.
+   * random이면 재료 중 가장 깊은 구역·좋은 등급을 바탕으로 무작위 장비가 나온다. 값은 대장간 구역 × FORGE.feePerZone
+   */
+  forge(id: string, shopId: number, picks: { from: 'inv' | 'bag'; idx: number }[], random: boolean) {
+    const p = this.playerById(id);
+    const shop = this.shops[shopId];
+    if (!p || p.dead || !shop || shop.type !== 'forge') return;
+    const fail = (text: string) => this.notice(p, text);
+    if (dist(p.x, p.y, shop.x, shop.y) > SHOP.range + 20) return fail('대장장이에게서 너무 멀어요');
+    const uniq = new Map(picks.map((k) => [`${k.from}:${k.idx}`, k]));
+    const items: Item[] = [];
+    for (const k of uniq.values()) {
+      const it = k.from === 'inv' ? (p.inv[k.idx]?.kind === 'item' ? (p.inv[k.idx] as { item: Item }).item : null) : p.bag[k.idx];
+      if (!it) return fail('없는 장비예요');
+      items.push(it);
+    }
+    if (items.length < FORGE.min || items.length > FORGE.max) return fail(`장비를 ${FORGE.min}~${FORGE.max}개 고르세요`);
+    const fee = FORGE.feePerZone * shop.zone;
+    if (p.gold < fee) return fail(`돈이 부족해요 (${fee} G)`);
+    const zone = Math.max(...items.map((it) => it.zone), shop.zone);
+    let result: Item;
+    let recipe: string | null = null;
+    if (random) {
+      const rarity = randomForgeRarity(items, this.rng);
+      result = makeItem(this.nextId++, zone, this.rng, { common: 0, rare: 0, epic: 0, legendary: 0, [rarity]: 1 });
+    } else {
+      const r = matchRecipe(items);
+      if (!r) return fail('맞는 조합법이 없어요 (오른쪽 조합법을 보세요)');
+      result = recipeItem(r, zone, this.nextId++);
+      recipe = r.title;
+    }
+    // 재료를 빼고 결과를 넣는다 (재료가 빠진 자리가 있으니 항상 들어간다)
+    for (const k of uniq.values()) {
+      if (k.from === 'inv') p.inv[k.idx] = null;
+      else p.bag[k.idx] = null;
+    }
+    p.gold -= fee;
+    this.recalcStats(p);
+    this.addItem(p, result);
+    this.events.push({ t: 'forged', pid: p.id, item: result, recipe });
   }
 
   /** 음식 n개를 같은 종류 묶음에 더하거나 빈 칸에 새로 넣는다. 최대 개수나 자리가 없으면 false. */
@@ -612,16 +710,13 @@ export class Sim {
     if (--stack.count <= 0) p.inv[i] = null;
   }
 
-  /** 상자 칸 클릭: 음식은 하나 먹고, 장비는 발밑에 내려놓는다 (자리를 비우려고). */
+  /** 상자 칸 클릭(단축키 5~0): 음식은 하나 먹고, 장비는 가방에 넣는다 (버리기는 캐릭터 메뉴에서) */
   useSlot(id: string, idx: number) {
     const p = this.playerById(id);
     const sl = p?.inv[idx];
     if (!p || p.dead || !sl) return;
     if (sl.kind !== 'item') return this.eatFromInv(p, sl.kind);
-    p.inv[idx] = null;
-    this.recalcStats(p);
-    this.spawnDrop({ kind: 'item', item: sl.item }, p.x, p.y);
-    this.notice(p, '장비를 내려놓았어요');
+    this.moveItem(id, 'inv', idx);
   }
 
   // ─── 상점 ─────────────────────────────────────────
@@ -1377,7 +1472,7 @@ export class Sim {
       zone: this.zone,
       status: this.status,
       players: this.players.map((p) => ({
-        ...p, x: r(p.x), y: r(p.y), aim: r2(p.aim), dashHits: [], inv: viewer && p.id !== viewer ? [] : p.inv,
+        ...p, x: r(p.x), y: r(p.y), aim: r2(p.aim), dashHits: [], inv: viewer && p.id !== viewer ? [] : p.inv, bag: viewer && p.id !== viewer ? [] : p.bag,
       })),
       enemies: this.enemies.filter((e) => e.active && near(e.x, e.y)).map(enemyView),
       projectiles: this.projectiles.filter((p) => near(p.x, p.y)).map(projView),

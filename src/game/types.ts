@@ -57,6 +57,7 @@ export interface Item {
   rarity: Rarity;
   zone: number; // 드랍된 구역. 이름의 재질과 기본 수치를 결정한다.
   noun?: string; // 무기는 비워두고 착용자 직업에 맞는 이름으로 표시한다.
+  title?: string; // 대장간 조합법으로 만든 고유 장비의 이름 (있으면 재질·종류 대신 이 이름)
   stats: ItemStats;
 }
 
@@ -89,7 +90,8 @@ export interface Player extends Body {
   alloc: Attrs; // 직접 배분한 포인트
   points: number; // 남은 배분 포인트
   gold: number;
-  inv: (InvSlot | null)[]; // 아이템 상자 (INV_SIZE칸). 상자에 든 장비는 모두 능력치에 더해진다
+  inv: (InvSlot | null)[]; // 아이템 상자 (INV_SIZE칸). 상자에 든 장비는 모두 능력치에 더해진다 (= 착용 중)
+  bag: (Item | null)[]; // 가방 (BAG_SIZE칸). 장비를 넣어 두기만 하는 곳이라 능력치에 더해지지 않는다
   stats: Stats;
   atkCd: number;
   atkAnim: number; // 공격 모션 남은 시간(렌더용)
@@ -178,7 +180,7 @@ export interface ShopEntry {
 }
 
 /** 상점 종류: 회복(음식), 공격(무기·공격 장신구), 방어(갑옷·방어 장신구) */
-export type ShopType = 'heal' | 'attack' | 'defense';
+export type ShopType = 'heal' | 'attack' | 'defense' | 'forge'; // forge: 대장간 (파는 물건은 없고 장비를 조합한다)
 
 export interface Shop {
   id: number;
@@ -199,6 +201,7 @@ export type GameEvent =
   | { t: 'kill'; x: number; y: number; kind: EnemyKind; elite: boolean } // 적이 쓰러졌다
   | { t: 'shoot'; x: number; y: number; kind: Projectile['kind']; enemy: boolean } // 투사체를 쐈다 (기본 공격·적의 원거리 공격)
   | { t: 'gate'; x: number; y: number } // 문이 열렸다
+  | { t: 'forged'; pid: string; item: Item; recipe: string | null } // 대장간에서 조합했다 (recipe: 조합법 이름, 랜덤이면 null)
   | { t: 'heal'; x: number; y: number; v: number }
   | { t: 'boom'; x: number; y: number; r: number; shake?: boolean; kind?: BoomKind }
   | { t: 'levelup'; pid: string; level: number }

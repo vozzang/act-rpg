@@ -50,7 +50,7 @@ const MODELS = {
   // 맵 편집기 장식 (Survival Kit, 원본이 작아 PROPS에서 2배로 키운다)
   svTreeAutumn: 'survival/tree-autumn', svLog: 'survival/tree-log', svStump: 'survival/tree-trunk', svTent: 'survival/tent-canvas',
   svCampfire: 'survival/campfire-pit', svBedroll: 'survival/bedroll', svSignpost: 'survival/signpost', svWorkbench: 'survival/workbench',
-  svBox: 'survival/box', svBoxLarge: 'survival/box-large', svFence: 'survival/fence', svFenceFort: 'survival/fence-fortified',
+  svBox: 'survival/box', svAnvil: 'survival/workbench-anvil', svBoxLarge: 'survival/box-large', svFence: 'survival/fence', svFenceFort: 'survival/fence-fortified',
   // 6~10구역 테마 (Nature Kit · Survival Kit · Tower Defense Kit · Castle Kit)
   ntTreeDark: 'nature/tree_default_dark', ntOakDark: 'nature/tree_oak_dark', ntTreeThin: 'nature/tree_thin_dark', ntTreeSimple: 'nature/tree_simple_dark',
   ntRockTallA: 'nature/rock_tallA', ntRockTallC: 'nature/rock_tallC', ntStoneTallA: 'nature/stone_tallA', ntStoneTallC: 'nature/stone_tallC',
@@ -530,7 +530,13 @@ export class World3D {
     // 상점: 가판대 앞(길이 있는 남쪽)에 상인. 회복은 초록 천막(옆에 가로등), 공격은 빨간 천막, 방어는 나무 가판대(옆에 수레)
     for (const sh of this.level.shops) {
       const x = sh.x * U, z = sh.y * U;
-      put(sh.type === 'heal' ? 'stallGreen' : sh.type === 'attack' ? 'stall' : 'stallPlain', x, z, 0, 1.6);
+      if (sh.type === 'forge') {
+        // 대장간: 모루와 작업대, 화로
+        put('svAnvil', x, z + 0.1, 0, 2.6);
+        put('svWorkbench', x - 1.2, z - 0.2, 0.3, 2.2);
+        put('svCampfire', x + 1.2, z - 0.1, 0, 2.2);
+        put('barrel', x + 1.4, z + 0.9, 0, 0.8);
+      } else put(sh.type === 'heal' ? 'stallGreen' : sh.type === 'attack' ? 'stall' : 'stallPlain', x, z, 0, 1.6);
       if (sh.type === 'heal') put('lantern', x - 1.3, z + 0.8, 0, 1.4);
       if (sh.type === 'defense') put('cart', x + 1.6, z + 0.2, -0.5, 1.2);
       const npc = this.makeChar({ model: 'merchant', scale: [1, 1, 1], attack: 'emote-yes' });

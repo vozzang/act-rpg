@@ -22,5 +22,8 @@ export interface Session {
   onRemoteAlloc?: (id: string, attr: AttrKey) => void;
   onRemoteBuy?: (id: string, shop: number, idx: number) => void;
   onRemoteSlot?: (id: string, idx: number) => void;
+  onRemoteMove?: (id: string, from: 'inv' | 'bag', idx: number) => void;
+  onRemoteDrop?: (id: string, from: 'inv' | 'bag', idx: number) => void;
+  onRemoteForge?: (id: string, shop: number, picks: { from: 'inv' | 'bag'; idx: number }[], random: boolean) => void;
   onPlayerLeft?: (id: string) => void;
 }
