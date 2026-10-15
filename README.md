@@ -216,7 +216,7 @@
   상점 창이 열려 있을 때는 숫자키가 구매에 쓰입니다.
 - 장비 칸은 등급 색으로, 음식 칸은 HP 빨강·MP 파랑과 개수(×3)로 표시됩니다.
 
-모든 장비는 **아이템 목록**(`src/game/items.ts`, 120개)에 이름·종류·등급·수치가 정해져 있습니다. 수치를 바꾸려면 그 표의 숫자를 고치면 됩니다.
+모든 장비는 **아이템 목록**(`src/game/data/items.ts`, 120개)에 이름·종류·등급·수치가 정해져 있습니다. 수치를 바꾸려면 그 표의 숫자를 고치면 됩니다.
 
 - 장비는 **5단계**로 나뉩니다: 1·2구역 **낡은** → 3·4구역 **강철** → 5·6구역 **미스릴** → 7·8구역 **용비늘** → 9·10구역 **마왕의**. 깊은 단계일수록 수치가 높습니다.
 - 몬스터는 가끔(종류별 확률 × `ITEM_DROP_MULT` 0.6) 그 구역 단계의 '드랍' 장비 중에서 등급(일반 61% · 희귀 28% · 영웅 10% · 전설 약 0.5%)을 굴려 떨어뜨립니다.
@@ -272,7 +272,7 @@
 | 아무 무기 ×3 | 무쇠 대장장이의 망치 (공격·힘·체력) |
 | 아무 방어구 ×3 | 철벽의 갑주 (방어·체력·최대 HP) |
 
-대검·장궁·지팡이·반지·갑옷·판금 갑옷·부적은 공격·방어 상점에서 팝니다. 조합법은 `src/game/data.ts`의 `RECIPES`에서 바꿉니다.
+대검·장궁·지팡이·반지·갑옷·판금 갑옷·부적은 공격·방어 상점에서 팝니다. 조합법은 `src/game/data/forge.ts`의 `RECIPES`에서 바꿉니다.
 
 ---
 
@@ -293,7 +293,7 @@
 
 - 1·2구역 지점은 낡은 장비, 3·4구역은 강철 … 9·10구역은 마왕의 장비를 팝니다 (아이템 목록 `items.ts`의 'shop' 장비).
 - 장비 값: 희귀 55 · 영웅 110 G에서 단계가 오를 때마다 비싸집니다(같은 단계 장비는 어느 지점에서 사든 같은 값).
-- 판매 목록은 `src/game/data.ts`의 `SHOP_ITEMS`, 가판대 위치·종류는 맵 파일(맵 편집기의 상점 도구: 누를 때마다 회복 → 공격 → 방어 → 대장간)에서 바꿉니다.
+- 판매 목록은 `src/game/data/shop.ts`의 `SHOP_ITEMS`, 가판대 위치·종류는 맵 파일(맵 편집기의 상점 도구: 누를 때마다 회복 → 공격 → 방어 → 대장간)에서 바꿉니다.
 - 산 물건은 아이템 상자에 들어갑니다(상자가 차 있으면 가방). 둘 다 차 있으면 살 수 없습니다.
 
 ---
@@ -337,7 +337,7 @@
 | 불꽃 기사 | 5 | 가장 강한 근접 몬스터. 깜빡인 뒤 내려친다 |
 | 화염 술사 | 5 | 거리를 두고 발밑에 화염탄을 떨어뜨린다 (떨어질 자리에 빨간 원) |
 
-고블린도 이 캐릭터 팩의 고블린 모델로 바꿨습니다. 몬스터 능력치·행동은 `src/game/data.ts`의 `ENEMIES`(행동 방식 `ai`), 구역별 출현 비율은 `src/game/level.ts`의 `ZONE_POOLS`에서 조정합니다.
+고블린도 이 캐릭터 팩의 고블린 모델로 바꿨습니다. 몬스터 능력치·행동은 `src/game/data/enemies.ts`의 `ENEMIES`(행동 방식 `ai`), 구역별 출현 비율은 `src/game/level.ts`의 `ZONE_POOLS`에서 조정합니다.
 
 ### 중간보스
 
@@ -361,7 +361,7 @@
 - 모습은 Quaternius 캐릭터(엘프 궁수, 바이킹, 황금 기사 등)이고 싸우는 방식은 저격수는 원거리, 광전사·기사단장은 내려치기입니다. 모델은 `World3D.ts`의 `ELITE_LOOKS`에서 이름으로 고릅니다.
 - 넉백을 거의 받지 않고, 기절 시간도 절반입니다.
 - 처치하면 경험치 6배, 돈 8배를 주고, **좋은 등급 장비 하나와 회복 음식을 반드시** 떨어뜨립니다.
-- 능력치는 `src/game/data.ts`의 `ELITES`(중간보스별 HP·공격·방어)와 `ELITE`(보상 배율 등)에서 조정합니다.
+- 능력치는 `src/game/data/enemies.ts`의 `ELITES`(중간보스별 HP·공격·방어)와 `ELITE`(보상 배율 등)에서 조정합니다.
 
 ### 문과 문지기
 
@@ -384,7 +384,7 @@
 | 10 마왕성 → 흑룡의 둥지 | 흑룡의 문지기 (어두운 황금 기사, 내려치기) |
 
 - 문지기는 중간보스의 한 종류라 같은 규칙(금빛 고리, 넉백·기절 저항, 보상 6배·8배, 좋은 장비 확정)을 따르고, 같은 구역의 중간보스보다 한 단계 강합니다.
-- 능력치는 `src/game/data.ts`의 `GATE_KEEPERS`에서 조정합니다. 문 위치는 맵 파일이 정하고(`gates`), 열린 문은 스냅샷의 `gates`로 참가자에게 전해집니다.
+- 능력치는 `src/game/data/enemies.ts`의 `GATE_KEEPERS`에서 조정합니다. 문 위치는 맵 파일이 정하고(`gates`), 열린 문은 스냅샷의 `gates`로 참가자에게 전해집니다.
 
 ### 최종 보스: 흑룡
 
@@ -420,7 +420,7 @@ npm run typecheck  # 타입 검사
 - **classes.html — 직업 능력치**: 직업별로 레벨마다 능력치(힘·민첩·지능·체력), 최대 HP·MP, 공격, 방어, 치명, 회피, 공속, 스킬가속, MP 회복, 누적 경험치를 표로 봅니다. 레벨업 포인트를 어디에 쓸지(주 능력치 / 공격 능력치 / 체력 / 고르게 / 안 씀)와 최고 레벨을 고를 수 있고, 스킬을 배우는 레벨은 강조됩니다.
 - **monsters.html — 몬스터 도감**: 일반 몬스터의 행동, 기본 수치, 고른 구역·파티 인원에서의 실제 HP·공격·방어, 경험치·돈·장비 드롭 확률, 나오는 구역(구역별 마릿수)을 봅니다. 중간보스·문지기와 흑룡도 따로 정리돼 있습니다.
 - **items.html — 아이템 도감**: 장비 120개의 등급, 종류, 단계(나오는 구역), 수치(공격·방어·최대 HP·치명·능력치)와 얻는 곳을 봅니다. 얻는 곳에는 몬스터 드랍 확률, 중간보스·문지기 드랍 확률, 상점 이름과 값, 대장간 조합법 재료가 나옵니다. 단계·종류·등급·얻는 곳·능력치·이름으로 거를 수 있고, 등급별 확률, 조합법별 단계 수치, 랜덤 조합 규칙도 정리돼 있습니다.
-- 수치는 게임 코드(`src/game/data.ts`, `items.ts`)와 맵(`maps/world.json`)에서 바로 계산하므로, 밸런스나 맵을 고치면 페이지도 함께 바뀝니다.
+- 수치는 게임 코드(`src/game/data/`)와 맵(`maps/world.json`)에서 바로 계산하므로, 밸런스나 맵을 고치면 페이지도 함께 바뀝니다.
 
 ### 맵 편집기
 
@@ -464,10 +464,17 @@ npm run typecheck  # 타입 검사
 ```
 src/
   game/            게임 규칙 (Phaser와 무관한 순수 TS)
-    data.ts        밸런스 데이터: 직업·능력치·스킬·적·장비·경험치   ← 수치 조정은 여기
+    data/          밸런스 데이터   ← 수치 조정은 여기 (다른 코드는 index.ts로 한 번에 불러온다)
+      core.ts      화면·타일 크기, 시뮬레이션 주기, 구역 이름·색
+      classes.ts   직업, 기본 공격, 스킬과 스킬 세부 수치
+      stats.ts     능력치 → 전투 수치 계산, 레벨업 경험치
+      enemies.ts   몬스터, 중간보스·문지기, 구역·인원수 강화 배율
+      items.ts     아이템 목록 (모든 장비의 이름·등급·수치·얻는 곳)
+      gear.ts      장비 등급, 드랍, 장비 만들기
+      shop.ts      회복 음식, 아이템 상자·가방, 상점 판매 목록·값
+      forge.ts     대장간 조합법, 랜덤 조합
     level.ts       맵 구조(Level)와 자동 생성기 (편집기의 '자동 생성'에 쓴다)
     mapfile.ts     맵 파일 형식, 맵 파일 ↔ Level 변환, 맵 검사
-    items.ts       아이템 목록 (모든 장비의 이름·등급·수치·얻는 곳)
     props.ts       맵 편집기 장식 종류 (이름, 모델, 크기, 길을 막는지)
     story.ts       스토리 대본 (인트로, 구역별, 흑룡, 엔딩)
     world.ts       게임이 쓰는 맵 (maps/world.json)
@@ -564,25 +571,26 @@ src/
 
 ### 밸런스 조정
 
-거의 모든 수치가 `src/game/data.ts`에 모여 있습니다.
+거의 모든 수치가 `src/game/data/` 폴더에 주제별로 모여 있습니다.
 
-| 바꾸고 싶은 것 | 위치 |
+| 바꾸고 싶은 것 | 위치 (`src/game/data/`의 파일) |
 |---|---|
-| 직업별 시작 능력치 / 레벨당 자동 상승 | `CLASSES.*.attrs` / `attrGrowth` |
-| 직업별 기본 HP·공격·MP 등 | `CLASSES.*.bonus` |
-| 능력치 1당 효과 (공격력, HP, 치명, MP 등) | `ATTR_EFFECT` |
-| 레벨당 배분 포인트 | `POINTS_PER_LEVEL` |
-| 기본 공격 (속도, 사거리, 위력) | `CLASSES.*.attack` |
-| 스킬 이름·MP·재사용·배우는 레벨 | `CLASSES.*.skills` |
-| 스킬 세부 수치 (범위, 배율, 지속시간) | `SKILL` |
-| 스킬을 배우는 레벨 | `SKILL_UNLOCKS` |
-| 적 능력치·행동 방식 | `ENEMIES` (`ai`: hop·melee·ranged·heavy·dash·frost·bomb) |
-| 구역별 적 강화 배율 | `ZONE_HP` · `ZONE_ATK` · `ZONE_DEF` (`zoneScale`) |
-| 인원수에 따른 적 체력 | `partyHpScale` |
-| 중간보스 / 문지기 | `ELITES` / `GATE_KEEPERS` (보상 배율은 `ELITE`) |
+| 직업별 시작 능력치 / 레벨당 자동 상승 | `classes.ts`: `CLASSES.*.attrs` / `attrGrowth` |
+| 직업별 기본 HP·공격·MP 등 | `classes.ts`: `CLASSES.*.bonus` |
+| 능력치 1당 효과 (공격력, HP, 치명, MP 등) | `stats.ts`: `ATTR_EFFECT` |
+| 레벨당 배분 포인트 | `stats.ts`: `POINTS_PER_LEVEL` |
+| 기본 공격 (속도, 사거리, 위력) | `classes.ts`: `CLASSES.*.attack` |
+| 스킬 이름·MP·재사용·배우는 레벨 | `classes.ts`: `CLASSES.*.skills` |
+| 스킬 세부 수치 (범위, 배율, 지속시간) | `classes.ts`: `SKILL` |
+| 스킬을 배우는 레벨 | `classes.ts`: `SKILL_UNLOCKS` |
+| 적 능력치·행동 방식 | `enemies.ts`: `ENEMIES` (`ai`: hop·melee·ranged·heavy·dash·frost·bomb) |
+| 구역별 적 강화 배율 | `enemies.ts`: `ZONE_HP` · `ZONE_ATK` · `ZONE_DEF` (`zoneScale`) |
+| 인원수에 따른 적 체력 | `enemies.ts`: `partyHpScale` |
+| 중간보스 / 문지기 | `enemies.ts`: `ELITES` / `GATE_KEEPERS` (보상 배율은 `ELITE`) |
 | 구역별 출현 몬스터 비율 · 벽의 바위 비율 | `src/game/level.ts`의 `ZONE_POOLS` · `ROCK_CHANCE` ※ |
-| 구역 이름 · 색 / 3D 테마 | `ZONE_NAMES` · `ZONE_PALETTE` / `World3D.ts`의 `ZONE_THEMES` |
-| 장비 이름·수치·얻는 곳 / 등급 드랍 확률 / 전체 드랍량 | `src/game/items.ts`의 `ITEM_LIST` / `RARITY`·`SHOP.rarityWeight`(중간보스) / `ITEM_DROP_MULT` |
-| 경험치 곡선 | `xpForLevel` |
+| 구역 이름 · 색 / 3D 테마 | `core.ts`: `ZONE_NAMES` · `ZONE_PALETTE` / `World3D.ts`의 `ZONE_THEMES` |
+| 장비 이름·수치·얻는 곳 / 등급 드랍 확률 / 전체 드랍량 | `items.ts`: `ITEM_LIST` / `gear.ts`: `RARITY`·`shop.ts`: `SHOP.rarityWeight`(중간보스) / `gear.ts`: `ITEM_DROP_MULT` |
+| 경험치 곡선 | `stats.ts`: `xpForLevel` |
+| 상점 판매 목록·값 / 대장간 조합법 | `shop.ts`: `SHOP_ITEMS`·`SHOP` / `forge.ts`: `RECIPES`·`FORGE` |
 
 ※ 게임은 맵 파일(`world.json`)에 놓인 몬스터를 그대로 쓰므로, `ZONE_POOLS`나 구역 크기(`ZONE_W`)를 바꾸면 맵 편집기의 **자동 생성**(시드 1)으로 맵을 다시 만들고 저장해야 반영됩니다. 이때 편집기로 손댄 내용은 사라지니 필요하면 다시 놓으세요.

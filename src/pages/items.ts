@@ -1,10 +1,10 @@
-// 아이템 도감 페이지 (items.html): 아이템 목록(items.ts)의 모든 장비를 수치·얻는 곳과 함께 보여 준다.
-// 드랍 확률·상점 값·조합법은 게임 코드(data.ts)의 규칙으로 바로 계산하므로, 목록이나 규칙을 고치면 페이지도 바뀐다.
+// 아이템 도감 페이지 (items.html): 아이템 목록(data/items.ts)의 모든 장비를 수치·얻는 곳과 함께 보여 준다.
+// 드랍 확률·상점 값·조합법은 게임 코드(data/)의 규칙으로 바로 계산하므로, 목록이나 규칙을 고치면 페이지도 바뀐다.
 import './pages.css';
 import {
-  ATTR_KEYS, ATTR_NAMES, BAG_SIZE, FORGE, FOOD, INV_SIZE, ITEM_DROP_MULT, RARITY, RECIPES, SHOP, ZONE_NAMES, recipeText, shopItemPrice,
+  ATTR_KEYS, ATTR_NAMES, BAG_SIZE, FORGE, FOOD, INV_SIZE, ITEM_DROP_MULT, ITEM_LIST, RARITY, RECIPES, SHOP, ZONE_NAMES, recipeText, shopItemPrice,
+  type ItemDef, type ItemSource,
 } from '../game/data';
-import { ITEM_LIST, type ItemDef, type ItemSource } from '../game/items';
 import type { ItemStats, Rarity, Slot } from '../game/types';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -16,7 +16,7 @@ const STAT_COLS: { key: keyof ItemStats; name: string }[] = [
   { key: 'atk', name: '공격' }, { key: 'def', name: '방어' }, { key: 'maxHp', name: '최대 HP' }, { key: 'crit', name: '치명' },
   ...ATTR_KEYS.map((k) => ({ key: k, name: ATTR_NAMES[k] })),
 ];
-/** 상점에서 파는 장비 키 → 상점 이름 (data.ts의 SHOP_ITEMS와 같다) */
+/** 상점에서 파는 장비 키 → 상점 이름 (data/shop.ts의 SHOP_ITEMS와 같다) */
 const SHOP_OF: Record<string, string> = {
   greatsword: '공격 상점', longbow: '공격 상점', staff: '공격 상점', ring: '공격 상점',
   armor: '방어 상점', plate: '방어 상점', amulet: '방어 상점',
@@ -134,5 +134,5 @@ const ssel = $<HTMLSelectElement>('stat');
 for (const c of STAT_COLS) ssel.add(new Option(c.name, c.key));
 for (const id of ['tier', 'slot', 'rarity', 'from', 'stat']) $(id).onchange = render;
 $('q').oninput = render;
-$('note').innerHTML = `장비 목록은 <code>src/game/items.ts</code>, 드랍·상점·대장간 규칙은 <code>src/game/data.ts</code>에서 바로 계산합니다.`;
+$('note').innerHTML = `장비 목록은 <code>src/game/data/items.ts</code>, 드랍·상점·대장간 규칙은 <code>src/game/data/</code>의 gear·shop·forge에서 바로 계산합니다.`;
 render();

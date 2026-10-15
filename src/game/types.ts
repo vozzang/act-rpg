@@ -4,7 +4,7 @@
 /** 직업: 검사(휴먼) · 수호자(드워프) · 궁수(엘프) · 마법사(노움) */
 export type ClassId = 'swordsman' | 'dwarf' | 'elf' | 'gnome';
 
-/** 몬스터 종류. 능력치·행동 방식은 data.ts의 ENEMIES */
+/** 몬스터 종류. 능력치·행동 방식은 data/enemies.ts의 ENEMIES */
 export type EnemyKind =
   | 'slime' | 'goblin' | 'skeleton' | 'orc' | 'boss'
   // 구역별로 섞여 나오는 몬스터 (Quaternius 캐릭터 모델)
@@ -61,10 +61,10 @@ export interface Stats {
 /** 장비에 붙는 수치 (있는 것만): 공격·방어·최대 HP·치명타 확률과 능력치 */
 export type ItemStats = Partial<Record<'atk' | 'def' | 'maxHp' | 'crit' | AttrKey, number>>;
 
-/** 장비 하나. 아이템 목록(items.ts)의 정의를 복사해 만든다 */
+/** 장비 하나. 아이템 목록(data/items.ts)의 정의를 복사해 만든다 */
 export interface Item {
   id: number; // 장비마다 다른 번호
-  key?: string; // 아이템 목록(items.ts)의 키
+  key?: string; // 아이템 목록(data/items.ts)의 키
   slot: Slot; // 종류
   rarity: Rarity; // 등급
   zone: number; // 장비 단계를 대표하는 구역 (단계 × 2 − 1). 대장간 결과 단계를 정할 때 쓴다

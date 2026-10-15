@@ -1,4 +1,4 @@
-// 직업 능력치 페이지 (classes.html): 직업별·레벨별 능력치와 전투 수치를 게임 데이터(data.ts)로 계산해 표로 보여 준다.
+// 직업 능력치 페이지 (classes.html): 직업별·레벨별 능력치와 전투 수치를 게임 데이터(data/)로 계산해 표로 보여 준다.
 // 장비는 없는 상태로 계산한다. 레벨업 포인트를 어디에 배분하는지 고를 수 있다.
 import './pages.css';
 import {
@@ -92,5 +92,5 @@ $('note').innerHTML = `장비 없이 계산한 값입니다(장비 수치는 그
   계산식: 공격 = 직업 기본값 + 공격 능력치 × ${ATTR_EFFECT.mainAtk} · 최대 HP = 직업 기본값 + 체력 × ${ATTR_EFFECT.vitHp} + (레벨−1) × ${ATTR_EFFECT.levelHp}
   · 방어 = 직업 기본값 + 체력 × ${ATTR_EFFECT.vitDef} + 힘 × ${ATTR_EFFECT.strDef} · 치명 = 직업 기본값 + 민첩 × ${ATTR_EFFECT.dexCrit}
   · 회피 = 민첩 × ${ATTR_EFFECT.dexDodge} · 최대 MP = 직업 기본값 + 지능 × ${ATTR_EFFECT.intMp} + (레벨−1) × 직업 MP 성장.
-  색칠한 줄은 스킬을 배우는 레벨, 노란 칸은 주 능력치·공격 능력치입니다. 값은 <code>src/game/data.ts</code>에서 바로 계산하므로 밸런스를 바꾸면 이 표도 바뀝니다.`;
+  색칠한 줄은 스킬을 배우는 레벨, 노란 칸은 주 능력치·공격 능력치입니다. 값은 <code>src/game/data/</code>(classes·stats)에서 바로 계산하므로 밸런스를 바꾸면 이 표도 바뀝니다.`;
 render();

@@ -97,7 +97,7 @@ const CHAR_SCALE = 1.25;
 const DRAGON_SCALE = 3; // 드래곤 모델 배율 (CHAR_SCALE이 한 번 더 곱해진다) // 캐릭터 모델(키 약 0.8칸)을 맵에 비해 조금 키운다
 const Z_SCALE = 1 / 40; // 투사체 높이(px) → 3D 높이
 
-// 구역별 바닥·길 색은 data.ts의 ZONE_PALETTE
+// 구역별 바닥·길 색은 data/core.ts의 ZONE_PALETTE
 const VOLCANO_ZONE = 5;
 const SNOW_ZONE = 3;
 
@@ -230,7 +230,7 @@ const ELITE_LOOKS: Record<string, Look> = {
     anims: { idle: 'Idle.000', walk: 'Walk', sprint: 'Run', 'attack-melee-right': 'Attack.000', 'holding-right': 'Attack.001', jump: 'Run', die: 'Die' },
   },
   '거대 슬라임': { ...SLIME_LOOK, model: 'slimePurple' }, // 보라색 슬라임
-  // 나머지 중간보스·문지기: Quaternius 캐릭터. 행동(근접·원거리 등)은 data.ts의 kind 그대로이고 모양만 바꾼다
+  // 나머지 중간보스·문지기: Quaternius 캐릭터. 행동(근접·원거리 등)은 data/enemies.ts의 kind 그대로이고 모양만 바꾼다
   // (거대 슬라임은 슬라임 그대로, 고블린 대장은 고블린 모델 그대로)
   '엘프 저격수': uLook('uElf', 1, 'holding-left-shoot'),
   '화염 저격수': { ...uLook('uElf', 1, 'holding-left-shoot'), tint: 0xff9a70 },

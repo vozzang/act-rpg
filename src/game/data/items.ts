@@ -2,7 +2,7 @@
 // tier: 구역 묶음 (1: 1·2구역, 2: 3·4구역, 3: 5·6구역, 4: 7·8구역, 5: 9·10구역). 깊은 묶음일수록 재질 이름이 바뀌고 수치가 높다.
 // base: 종류 이름 (대장간 조합법 재료로 쓴다), from: 얻는 곳 — drop 몬스터, shop 상점, recipe 대장간 조합법
 // (처음 수치는 기존 공식에서 운을 뺀 값으로 만들었다: 무기 공격 = (3 + 4z)·등급배율, 등급배율 일반 1 · 희귀 1.6 · 영웅 2.4 · 전설 3.6)
-import type { ItemStats, Rarity, Slot } from './types';
+import type { ItemStats, Rarity, Slot } from '../types';
 
 /** 장비를 얻는 곳: 몬스터 드랍 · 상점 · 대장간 조합법 */
 export type ItemSource = 'drop' | 'shop' | 'recipe';
