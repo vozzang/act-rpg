@@ -1,7 +1,7 @@
 // 게임 시뮬레이션. 호스트에서만 실행되고, 클라이언트는 스냅샷을 받아 그리기만 한다.
 import {
   AGGRO_RANGE, TICK_RATE, ATTR_EFFECT, ATTR_KEYS, CLASSES, ELITE, ELITES, ENEMIES, GATE_KEEPERS, FOOD, INV_SIZE, POINTS_PER_LEVEL, REVIVE_TIME, SHOP, SKILL, TILE, ZONE_NAMES,
-  deriveStats, makeItem, partyHpScale, type EliteDef, shopItemPrice, totalAttrs, xpForLevel, zoneScale, type AttackDef,
+  deriveStats, makeItem, partyHpScale, type EliteDef, shopStock, totalAttrs, xpForLevel, zoneScale, type AttackDef,
 } from './data';
 import { mulberry32, openGate, zoneOfTx, type Level } from './level';
 import { gameLevel } from './world';
@@ -18,6 +18,7 @@ const NAV_EVERY = 15; // 길찾기 지도 갱신 주기 (틱)
 const SNAPSHOT_RADIUS = 520; // 플레이어로부터 이 거리 안의 엔티티만 전송 (화면 대각선 + 여유)
 const CHILL_TIME = 2; // 얼음 마녀의 냉기 구슬에 맞으면 이 시간 동안
 const CHILL_SLOW = 0.6; // 이동 속도가 이만큼으로 줄어든다
+const DODGE_INVULN = 0.4; // 공격을 피한 뒤 무적 시간
 /** 근접 몬스터가 minDist보다 멀리서 맞으면 time초 동안 speed배로 쏜 플레이어에게 돌격한다 */
 const RUSH = { minDist: 160, time: 2.5, speed: 1.7 };
 
@@ -59,16 +60,10 @@ export class Sim {
       e.y = s.y;
       this.enemies.push(e);
     }
+    // 상점 판매 목록은 종류·지점마다 고정 (매 판 같다)
     this.shops = this.level.shops.map((sp, i) => ({
-      id: i, x: sp.x, y: sp.y, zone: sp.zone,
-      stock: [
-        { kind: 'hpFood' as const, price: SHOP.foodPrice, sold: false },
-        { kind: 'mpFood' as const, price: SHOP.foodPrice, sold: false },
-        ...Array.from({ length: SHOP.items }, () => {
-          const item = makeItem(this.nextId++, sp.zone, this.rng, SHOP.rarityWeight);
-          return { kind: 'item' as const, item, price: shopItemPrice(item.rarity, sp.zone), sold: false };
-        }),
-      ],
+      id: i, type: sp.type, x: sp.x, y: sp.y, zone: sp.zone,
+      stock: shopStock(sp.type, sp.zone, () => this.nextId++),
     }));
   }
 
@@ -102,7 +97,7 @@ export class Sim {
       gold: 0,
       // 음식 먹는 법을 익히도록 HP·MP 음식을 하나씩 넣어 준다
       inv: [{ kind: 'hpFood', count: 1 }, { kind: 'mpFood', count: 1 }, ...Array<null>(INV_SIZE - 2).fill(null)],
-      stats: { maxHp: 0, atk: 0, def: 0, crit: 0, haste: 0, cdr: 0, maxMp: 0, mpRegen: 0 },
+      stats: { maxHp: 0, atk: 0, def: 0, crit: 0, haste: 0, dodge: 0, cdr: 0, maxMp: 0, mpRegen: 0 },
       atkCd: 0, atkAnim: 0, skillCds: [0, 0, 0, 0], dashTime: 0, dashSkill: 0, dashHits: [],
       guard: 0, guardReduce: 0, atkBuff: 0, chill: 0, mp: 0,
       invuln: 0, dead: false, revive: 0, kills: 0,
@@ -281,6 +276,7 @@ export class Sim {
         kind: a.proj, ang: p.aim, speed: a.speed, range: a.range, arcHeight: a.arcHeight,
         r: a.proj === 'orb' ? 9 : 6, aoe: a.aoe, dmg: d.v, crit: d.crit, pierce: false,
       }));
+      this.events.push({ t: 'shoot', x: p.x, y: p.y, kind: a.proj, enemy: false });
     }
   }
 
@@ -352,7 +348,7 @@ export class Sim {
   }
 
   private useSkill(p: Player, idx: number) {
-    const ev = (r: number, x = p.x, y = p.y) => this.events.push({ t: 'skill', pid: p.id, idx, x, y, r, aim: Math.round(p.aim * 100) / 100 });
+    const ev = (r: number, x = p.x, y = p.y) => this.events.push({ t: 'skill', pid: p.id, cls: p.cls, idx, x, y, r, aim: Math.round(p.aim * 100) / 100 });
     const elfArrow = CLASSES.elf.attack as ProjectileAttack;
     switch (`${p.cls}.${idx}`) {
       // ── 검사 ──
@@ -638,11 +634,12 @@ export class Sim {
     if (!p || p.dead || !shop || !entry) return;
     const fail = (text: string) => this.notice(p, text);
     if (dist(p.x, p.y, shop.x, shop.y) > SHOP.range + 20) return fail('상인에게서 너무 멀어요');
-    if (entry.sold) return fail('품절');
+    if (entry.buyers?.includes(p.id)) return fail('이미 산 장비예요');
     if (p.gold < entry.price) return fail('돈이 부족해요');
     if (entry.kind === 'item') {
-      if (!this.addItem(p, entry.item!)) return fail('아이템 상자가 가득 찼어요');
-      entry.sold = true;
+      // 장비는 플레이어마다 하나씩 살 수 있다 (산 사람에게만 품절로 보인다). 산 장비는 따로 복사해 준다
+      if (!this.addItem(p, { ...entry.item!, id: this.nextId++, stats: { ...entry.item!.stats } })) return fail('아이템 상자가 가득 찼어요');
+      entry.buyers!.push(p.id);
     } else if (!this.addFood(p, entry.kind)) {
       return fail(this.foodCount(p, entry.kind) >= FOOD.stackMax ? `${FOOD.stackMax}개까지만 들 수 있어요` : '아이템 상자가 가득 찼어요');
     }
@@ -676,6 +673,12 @@ export class Sim {
 
   private damagePlayer(p: Player, raw: number, fromX: number, fromY: number) {
     if (p.dead || p.invuln > 0) return;
+    // 민첩에 따라 가끔 피한다. 피한 뒤 잠깐 무적이라 몸에 닿아 있는 적이 매 틱 다시 굴려 결국 맞히는 일은 없다
+    if (this.rng() < p.stats.dodge) {
+      p.invuln = DODGE_INVULN;
+      this.events.push({ t: 'dodge', x: p.x, y: p.y });
+      return;
+    }
     let scaled = raw * (0.9 + this.rng() * 0.2);
     if (p.guard > 0) scaled *= 1 - p.guardReduce;
     const dmg = Math.max(1, Math.round(scaled * 0.15), Math.round(scaled - p.stats.def * 0.5));
@@ -728,6 +731,8 @@ export class Sim {
     if (this.gates[i]) return;
     this.gates[i] = true;
     openGate(this.level, i);
+    const g = this.level.gates[i];
+    this.events.push({ t: 'gate', x: (g.tx + 0.5) * TILE, y: ((g.ty0 + g.ty1 + 1) / 2) * TILE });
     // 길찾기 지도를 새로 계산하게 한다 (문 자리가 길이 됐다)
     for (const nav of this.navs.values()) nav.originTx = -1;
     const last = i === this.gates.length - 1;
@@ -842,6 +847,7 @@ export class Sim {
 
   private killEnemy(e: Enemy, by: Player | null) {
     if (by) by.kills++;
+    this.events.push({ t: 'kill', x: Math.round(e.x), y: Math.round(e.y), kind: e.kind, elite: !!e.elite });
     for (const p of this.players) if (!p.dead) this.gainXp(p, e.xp);
 
     if (e.kind === 'boss') {
@@ -871,6 +877,7 @@ export class Sim {
   }
 
   private enemyProjectile(e: Enemy, kind: Projectile['kind'], ang: number, speed: number, life: number, dmg: number): Projectile {
+    if (kind !== 'shockwave') this.events.push({ t: 'shoot', x: Math.round(e.x), y: Math.round(e.y), kind, enemy: true });
     return {
       id: this.nextId++, fromPlayer: false, ownerId: '', kind,
       x: e.x + Math.cos(ang) * e.r, y: e.y + Math.sin(ang) * e.r, z: 0,
@@ -1154,6 +1161,7 @@ export class Sim {
   /** 목표 주변에 화염탄 n개를 뱉는다 (흑룡, 화염 술사). 포물선으로 날아가 떨어질 자리에 경고 원이 그려진다. 첫 발은 목표 발밑. */
   private spitFire(e: Enemy, target: Player, n: number) {
     const flight = 1.1, height = 140;
+    this.events.push({ t: 'shoot', x: Math.round(e.x), y: Math.round(e.y), kind: 'firebomb', enemy: true });
     for (let i = 0; i < n; i++) {
       const ang = this.rng() * Math.PI * 2;
       const off = i === 0 ? 0 : 30 + this.rng() * 70;
@@ -1350,7 +1358,7 @@ export class Sim {
    * 화면용 상태. viewer를 주면 그 플레이어에게 보낼 것으로 만든다:
    * 아이템 상자는 자기 것만 필요하므로 다른 플레이어의 상자는 비워서 보낸다.
    */
-  snapshot(events: GameEvent[], viewer?: string): Snapshot {
+  snapshot(events: GameEvent[], viewer?: string, shopViewer = viewer): Snapshot {
     const near = (x: number, y: number) => this.players.some((p) => dist(p.x, p.y, x, y) < SNAPSHOT_RADIUS);
     const r = (v: number) => Math.round(v * 10) / 10;
     const r2 = (v: number) => Math.round(v * 100) / 100;
@@ -1374,7 +1382,10 @@ export class Sim {
       enemies: this.enemies.filter((e) => e.active && near(e.x, e.y)).map(enemyView),
       projectiles: this.projectiles.filter((p) => near(p.x, p.y)).map(projView),
       drops: this.drops.filter((d) => near(d.x, d.y)).map((d) => ({ id: d.id, kind: d.kind, x: r(d.x), y: r(d.y), z: r(d.z), item: d.item })),
-      shops: this.shops.filter((sh) => near(sh.x, sh.y)),
+      // 장비 품절 여부는 보는 사람 기준 (산 사람 목록은 보내지 않는다)
+      shops: this.shops.filter((sh) => near(sh.x, sh.y)).map((sh) => ({
+        ...sh, stock: sh.stock.map(({ buyers, ...e }) => ({ ...e, sold: !!shopViewer && !!buyers?.includes(shopViewer) })),
+      })),
       events,
       boss: boss ? { hp: boss.hp, maxHp: boss.maxHp } : null,
       gates: this.gates,

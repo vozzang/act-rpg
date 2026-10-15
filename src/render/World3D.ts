@@ -9,9 +9,10 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { isTouchDevice } from './TouchControls';
 import { SkillFx } from './SkillFx';
-import { CLASSES, ELITE, GATE_KEEPERS, RARITY, TILE, VIEW_H, VIEW_W } from '../game/data';
-import { G_ROAD, G_STONE, T_FLOOR, T_GATE, T_SHOP, T_TREE, openGate, zoneOfTx, type Level } from '../game/level';
-import type { ClassId, DropView, EnemyKind, EnemyView, Player, ProjectileView, Snapshot } from '../game/types';
+import { CLASSES, ELITE, GATE_KEEPERS, RARITY, ZONE_PALETTE, TILE, VIEW_H, VIEW_W } from '../game/data';
+import { G_ROAD, G_STONE, T_FLOOR, T_GATE, T_PROP, T_SHOP, T_TREE, openGate, zoneOfTx, type Level } from '../game/level';
+import { PROPS } from '../game/props';
+import type { ClassId, DropView, Rarity, EnemyKind, EnemyView, Player, ProjectileView, Snapshot } from '../game/types';
 
 const BASE = 'assets/';
 const MODELS = {
@@ -27,7 +28,7 @@ const MODELS = {
   // 사람 (Mini Characters)
   sage: 'mini/characters/character-male-e', merchant: 'mini/characters/character-male-b',
   // 마을 (Fantasy Town Kit)
-  stall: 'town/stall-red', cart: 'town/cart', lantern: 'town/lantern',
+  stall: 'town/stall-red', stallGreen: 'town/stall-green', stallPlain: 'town/stall', cart: 'town/cart', lantern: 'town/lantern',
   // 아레나 (Mini Arena)
   soldier: 'mini/arena/character-soldier', aFloor: 'mini/arena/floor', aFloorDetail: 'mini/arena/floor-detail',
   aColumn: 'mini/arena/column', aColumnBroken: 'mini/arena/column-damaged', statue: 'mini/arena/statue', aBanner: 'mini/arena/banner',
@@ -38,6 +39,27 @@ const MODELS = {
   snowRocksL: 'holiday/rocks-large', snowRocksM: 'holiday/rocks-medium', snowRocksS: 'holiday/rocks-small',
   snowman: 'holiday/snowman', snowPile: 'holiday/snow-pile', snowBunker: 'holiday/snow-bunker',
   iceCrystal: 'td/snow-detail-crystal', iceCrystalL: 'td/snow-detail-crystal-large', snowStones: 'td/snow-detail-rocks',
+  // 궁수 화살 (Arrow.fbx를 길이 1, 가운데 기준 GLB로 바꾼 것. 촉이 -z)
+  arrowModel: 'arrow/arrow',
+  // 검사의 장검 (longsword1.blend를 GLB로 바꾼 것. 손잡이 가운데가 원점, 칼끝이 +y, 길이 0.6)
+  longsword: 'longsword/longsword',
+  // 수호자의 도끼 (axe_model.obj를 GLB로 바꾼 것. 쥐는 곳이 원점, 머리가 +y, 길이 0.55)
+  axe: 'axe/axe',
+  // 마법사의 지팡이 (staff01.blend를 GLB로 바꾼 것. 쥐는 곳이 원점, 머리가 +y, 길이 0.75)
+  staff: 'staff/staff',
+  // 맵 편집기 장식 (Survival Kit, 원본이 작아 PROPS에서 2배로 키운다)
+  svTreeAutumn: 'survival/tree-autumn', svLog: 'survival/tree-log', svStump: 'survival/tree-trunk', svTent: 'survival/tent-canvas',
+  svCampfire: 'survival/campfire-pit', svBedroll: 'survival/bedroll', svSignpost: 'survival/signpost', svWorkbench: 'survival/workbench',
+  svBox: 'survival/box', svBoxLarge: 'survival/box-large', svFence: 'survival/fence', svFenceFort: 'survival/fence-fortified',
+  // 6~10구역 테마 (Nature Kit · Survival Kit · Tower Defense Kit · Castle Kit)
+  ntTreeDark: 'nature/tree_default_dark', ntOakDark: 'nature/tree_oak_dark', ntTreeThin: 'nature/tree_thin_dark', ntTreeSimple: 'nature/tree_simple_dark',
+  ntRockTallA: 'nature/rock_tallA', ntRockTallC: 'nature/rock_tallC', ntStoneTallA: 'nature/stone_tallA', ntStoneTallC: 'nature/stone_tallC',
+  ntCactusTall: 'nature/cactus_tall', ntCactusShort: 'nature/cactus_short', ntLily: 'nature/lily_large', ntMushRed: 'nature/mushroom_redGroup',
+  ntMushTan: 'nature/mushroom_tanGroup', ntObelisk: 'nature/statue_obelisk', ntStatueHead: 'nature/statue_head', ntColumnBroken: 'nature/statue_columnDamaged',
+  ntStump: 'nature/stump_old', ntBush: 'nature/plant_bushSmall',
+  svSandA: 'survival/rock-sand-a', svSandB: 'survival/rock-sand-b', svSandC: 'survival/rock-sand-c',
+  tdCrystalL: 'td/detail-crystal-large', tdCrystal: 'td/detail-crystal', tdCrystalTower: 'td/tower-round-crystals',
+  csWall: 'castle/wall', csTower: 'castle/tower-square-base', csBanner: 'castle/flag-banner-long',
   // 회복 음식 (Food Kit)
   ham: 'food/whole-ham', apple: 'food/apple', grapes: 'food/grapes', wine: 'food/wine-red',
 } as const;
@@ -70,12 +92,39 @@ const CHAR_SCALE = 1.25;
 const DRAGON_SCALE = 3; // 드래곤 모델 배율 (CHAR_SCALE이 한 번 더 곱해진다) // 캐릭터 모델(키 약 0.8칸)을 맵에 비해 조금 키운다
 const Z_SCALE = 1 / 40; // 투사체 높이(px) → 3D 높이
 
-const GRASS = [0x5c9a44, 0x8a9448, 0xe4ebf2, 0x8a7450, 0x4a3c36]; // 구역별 바닥 (3구역 눈밭, 5구역 화산재)
-const ROAD = 0xb59866;
-const SNOW_ROAD = 0xaebccb; // 3구역 설원의 다져진 눈길
-const VOLCANO_ROAD = 0x7a4630; // 5구역 화산의 붉은 흙길
+// 구역별 바닥·길 색은 data.ts의 ZONE_PALETTE
 const VOLCANO_ZONE = 5;
 const SNOW_ZONE = 3;
+
+/** 6~10구역 테마: [모델, 크기] 목록. square면 바위 칸을 90도 단위로만 돌린다 (성벽처럼 반듯한 모델) */
+type ZoneTheme = { trees: [ModelKey, number][]; rocks: [ModelKey, number][]; rocksHigh: [ModelKey, number][]; floor: [ModelKey, number][]; floorChance: number; square?: boolean };
+const ZONE_THEMES: Record<number, ZoneTheme> = {
+  6: { // 독기의 늪: 검은 나무, 이끼 낀 바위, 연잎·버섯
+    trees: [['ntTreeDark', 1.1], ['ntOakDark', 1.3]],
+    rocks: [['ntRockTallC', 0.9], ['dRocks', 1]], rocksHigh: [['rocksHigh', 1.05]],
+    floor: [['ntLily', 2.2], ['ntMushRed', 2], ['ntMushTan', 2], ['ntBush', 1.6]], floorChance: 0.09,
+  },
+  7: { // 사막 유적: 선인장, 모래 바위, 오벨리스크
+    trees: [['ntCactusTall', 1.7]],
+    rocks: [['svSandA', 1.9], ['svSandB', 1.9], ['svSandC', 1.9]], rocksHigh: [['ntStoneTallA', 1], ['ntObelisk', 1.4]],
+    floor: [['ntCactusShort', 1.6], ['svSandC', 1.2]], floorChance: 0.04,
+  },
+  8: { // 수정 동굴: 수정 덩어리와 뾰족 바위
+    trees: [],
+    rocks: [['tdCrystalL', 1.1], ['ntRockTallA', 1]], rocksHigh: [['tdCrystalTower', 1], ['ntRockTallA', 1.05]],
+    floor: [['tdCrystal', 1.6]], floorChance: 0.05,
+  },
+  9: { // 망령의 묘지: 앙상한 나무, 비석(오벨리스크), 그루터기
+    trees: [['ntTreeThin', 1.15], ['ntTreeSimple', 1.2]],
+    rocks: [['ntStoneTallC', 1], ['ntObelisk', 1.1]], rocksHigh: [['ntStoneTallA', 1]],
+    floor: [['ntObelisk', 0.6], ['ntStump', 1.6], ['ntColumnBroken', 0.8]], floorChance: 0.05,
+  },
+  10: { // 마왕성: 성벽과 망루, 깃발
+    trees: [], square: true,
+    rocks: [['csWall', 1]], rocksHigh: [['csTower', 1], ['csWall', 1]],
+    floor: [['csBanner', 0.8], ['aColumnBroken', 1.1]], floorChance: 0.02,
+  },
+};
 const SNOW_BOX = { x: 30, y: 12, z: 22 }; // 눈 입자가 도는 카메라 주변 상자
 const STONE = 0x9a9aa4;
 
@@ -83,6 +132,13 @@ const STONE = 0x9a9aa4;
  * 떨어진 물건 모델 배율. 원본 크기가 제각각이라(사과 0.2칸, 햄 0.64칸, 포도주 병 0.7칸 등)
  * 화면에서 비슷한 크기(높이 약 0.4~0.5칸)로 보이게 맞춘 값.
  */
+/** 장비 상자 등급별 모습: tint 상자를 등급 색으로 칠하는 정도, glow 빛나는 정도, pillar 빛기둥 높이(0이면 없음) */
+const CHEST_LOOK: Record<Rarity, { tint: number; glow: number; pillar: number }> = {
+  common: { tint: 0, glow: 0.05, pillar: 0 },
+  rare: { tint: 0.65, glow: 0.25, pillar: 0 },
+  epic: { tint: 0.7, glow: 0.4, pillar: 1.6 },
+  legendary: { tint: 0.75, glow: 0.55, pillar: 2.6 },
+};
 const DROP_SCALE: Partial<Record<ModelKey, number>> = { chest: 0.6, ham: 0.9, apple: 2.2, grapes: 1.4, wine: 1.0, coin: 0.7 };
 
 /** 직업·적별 3D 모델 설정 */
@@ -93,6 +149,7 @@ type Look = {
   weapons?: {
     model: ModelKey; bone: string; pos: [number, number, number]; rot: [number, number, number]; scale: number;
     glowTip?: number; // 무기 끝에 빛나는 구슬 (지팡이)
+    glowSize?: number; // 구슬 반지름 (무기 모델 단위, 기본 0.07)
   }[];
   attack: string; // 공격 애니메이션
   /** 게임이 쓰는 애니메이션 이름 → 이 모델의 클립 이름 (Kenney 캐릭터가 아닌 모델용) */
@@ -104,11 +161,11 @@ const BOW = { model: 'bow' as const, bone: 'arm-left', pos: [0.03, -0.16, 0.1] a
 const SPEAR = { model: 'spear' as const, bone: 'arm-right', pos: [-0.02, -0.2, 0.06] as [number, number, number], rot: [0.2, 0, 0] as [number, number, number], scale: 0.9 };
 
 const PLAYER_LOOKS: Record<ClassId, Look> = {
-  swordsman: { model: 'human', scale: [1, 1, 1], weapons: [SWORD, SHIELD], attack: 'attack-melee-right' },
-  dwarf: { model: 'soldier', scale: [1.15, 0.85, 1.15], tint: 0xffd0a0, weapons: [SWORD, { ...SHIELD, model: 'shieldRect' }], attack: 'attack-melee-right' },
+  swordsman: { model: 'human', scale: [1, 1, 1], weapons: [{ ...SWORD, model: 'longsword', pos: [-0.02, -0.12, 0.05], scale: 1 }, SHIELD], attack: 'attack-melee-right' },
+  dwarf: { model: 'soldier', scale: [1.15, 0.85, 1.15], tint: 0xffd0a0, weapons: [{ ...SWORD, model: 'axe', pos: [-0.02, -0.14, 0.05], rot: [0.5, Math.PI / 2, 0], scale: 1.15 }, { ...SHIELD, model: 'shieldRect' }], attack: 'attack-melee-right' },
   elf: { model: 'archer', scale: [0.95, 1.08, 0.95], weapons: [BOW], attack: 'holding-left-shoot' },
   // 흰 가운에 안경을 쓴 학자 모습 + 끝에 보라 구슬이 빛나는 지팡이
-  gnome: { model: 'sage', scale: [0.85, 0.78, 0.85], weapons: [{ ...SPEAR, glowTip: 0xb070ff }], attack: 'attack-melee-right' },
+  gnome: { model: 'sage', scale: [0.85, 0.78, 0.85], weapons: [{ ...SPEAR, model: 'staff', pos: [-0.02, -0.14, 0.05], rot: [0.5, 0, 0.25], scale: 1.4, glowTip: 0xb070ff, glowSize: 0.043 }], attack: 'attack-melee-right' },
 };
 /** Quaternius 캐릭터 손(FistR)에 드는 무기. 손 안쪽은 원본 크기 단위라 크게 키운다 */
 const U_HAND = { bone: 'FistR', pos: [0, 0.3, 0] as [number, number, number], rot: [0, 0, 0] as [number, number, number] };
@@ -167,7 +224,23 @@ const ELITE_LOOKS: Record<string, Look> = {
   '협곡의 문지기': uLook('uNinjaSand', 1, 'holding-left-shoot'),
   '설원의 문지기': { ...uLook('uViking', 1.05, 'attack-melee-right', { model: 'spear', scale: 3.8 }), tint: 0xd8ecff },
   '요새의 문지기': uLook('uKnight', 1.05, 'attack-melee-right', { model: 'sword', scale: 4 }),
-  '흑룡의 문지기': uLook('uKnightGold', 1.1, 'attack-melee-right', { model: 'spear', scale: 4, glowTip: 0xff3010 }),
+  '화산의 문지기': { ...uLook('uKnightGold', 1.1, 'attack-melee-right', { model: 'spear', scale: 4, glowTip: 0xff5020 }), tint: 0xffb090 },
+  // 6~10구역 중간보스·문지기: 같은 종류 모델에 구역 분위기 색을 입힌다
+  '늪의 망령': { ...ENEMY_LOOKS.zombie, tint: 0x90d070 },
+  '독 마녀': { ...ENEMY_LOOKS.iceWitch, tint: 0xa0ff80, weapons: [{ ...U_HAND, model: 'spear', scale: 3, glowTip: 0x80ff40 }] },
+  '늪의 문지기': { ...ENEMY_LOOKS.zombie, tint: 0x70b060 },
+  '사막 도적왕': { ...ENEMY_LOOKS.bandit, tint: 0xffe0a0 },
+  '모래 암살자': uLook('uNinjaSand', 1, 'attack-melee-right', { model: 'sword', scale: 2.8 }),
+  '사막의 문지기': { ...ENEMY_LOOKS.raider, tint: 0xffd890 },
+  '수정 수호자': { ...ENEMY_LOOKS.darkKnight, tint: 0xc0a0ff },
+  '수정 마녀': { ...ENEMY_LOOKS.iceWitch, tint: 0xd0b0ff, weapons: [{ ...U_HAND, model: 'spear', scale: 3, glowTip: 0xc080ff }] },
+  '수정의 문지기': { ...ENEMY_LOOKS.darkKnight, tint: 0xb090ff },
+  '망령 기사': { ...ENEMY_LOOKS.darkKnight, tint: 0xb0c8d8 },
+  '묘지 술사': { ...ENEMY_LOOKS.pyromancer, tint: 0xa0b0c0, weapons: [{ ...U_HAND, model: 'spear', scale: 3, glowTip: 0x80d0ff }] },
+  '묘지의 문지기': { ...ENEMY_LOOKS.zombie, tint: 0xa8b8c8 },
+  '마왕 친위대장': { ...ENEMY_LOOKS.flameKnight, tint: 0xff7070 },
+  '지옥 술사': { ...ENEMY_LOOKS.pyromancer, tint: 0xff8080 },
+  '흑룡의 문지기': { ...uLook('uKnightGold', 1.15, 'attack-melee-right', { model: 'spear', scale: 4, glowTip: 0xff3010 }), tint: 0x9a6a6a },
 };
 
 type Char = {
@@ -206,7 +279,7 @@ export class World3D {
   private npcs: Char[] = []; // 상인처럼 제자리에서 움직이기만 하는 캐릭터
   private gates: { group: THREE.Group; open: boolean; t: number }[] = []; // 구역 출구의 철문 (열리면 땅속으로 내려간다)
   /** 구역 날씨: 카메라가 그 구역 위에 있을 때 주변에 도는 입자 (3구역 눈, 5구역 불씨) */
-  private weather: { pts: THREE.Points; zone: number; rise: boolean }[] = [];
+  private weather: { pts: THREE.Points; zone: number; mode: 'fall' | 'rise' | 'drift' }[] = [];
   private camTarget = new THREE.Vector3();
   private tmpSize = new THREE.Vector2();
   private camReady = false;
@@ -265,6 +338,13 @@ export class World3D {
             o.receiveShadow = true;
           }
         });
+        // 마왕성(10구역) 성벽·망루는 검붉은 돌로 (철문 옆 망루는 다른 키라 그대로)
+        if (k === 'csWall' || k === 'csTower') {
+          g.scene.traverse((o) => {
+            const mesh = o as THREE.Mesh;
+            if (mesh.isMesh) (mesh.material as THREE.MeshStandardMaterial).color.multiply(new THREE.Color(0x5a4648));
+          });
+        }
         this.models.set(k, g);
       }),
       this.loadDragon(),
@@ -386,8 +466,8 @@ export class World3D {
         m.makeTranslation(tx + 0.5, -0.2, ty + 0.5);
         groundMesh.setMatrixAt(i, m);
         const g = ground[ty * w + tx];
-        const zone = tx >= this.level.arenaTx ? 0 : zoneOfTx(this.level, tx);
-        c.setHex(g === G_ROAD ? (zone === SNOW_ZONE ? SNOW_ROAD : zone === VOLCANO_ZONE ? VOLCANO_ROAD : ROAD) : g === G_STONE ? STONE : GRASS[zoneOfTx(this.level, tx) - 1]);
+        const pal = ZONE_PALETTE[zoneOfTx(this.level, tx) - 1];
+        c.setHex(g === G_ROAD ? pal.road : g === G_STONE ? STONE : pal.ground);
         c.multiplyScalar(0.92 + hash(tx, ty) * 0.12);
         groundMesh.setColorAt(i++, c);
       }
@@ -411,14 +491,22 @@ export class World3D {
         const r = hash(tx, ty), r2 = hash(ty, tx);
         const x = tx + 0.5, z = ty + 0.5;
         // 3구역은 설원: 눈 덮인 나무·바위와 눈 무더기·얼음 결정으로 바꿔 그린다
-        if (tx < this.level.arenaTx && zoneOfTx(this.level, tx) === SNOW_ZONE && !this.level.zoneStartsTx.includes(tx) && t !== T_SHOP && t !== T_GATE) {
+        const zoneHere = tx < this.level.arenaTx ? zoneOfTx(this.level, tx) : 0;
+        const special = !this.level.zoneStartsTx.includes(tx) && t !== T_SHOP && t !== T_GATE && t !== T_PROP;
+        if (zoneHere === SNOW_ZONE && special) {
           this.putSnow(put, t, tx, ty, r, r2);
+          continue;
+        }
+        // 6~10구역: 구역 테마(ZONE_THEMES)의 나무·바위·바닥 장식으로 그린다
+        const theme = ZONE_THEMES[zoneHere];
+        if (theme && special) {
+          this.putThemed(put, theme, t, tx, ty, r, r2);
           continue;
         }
         if (t === T_TREE) {
           put(r < 0.4 ? 'treeHigh' : 'tree', x + (r2 - 0.5) * 0.3, z + (r - 0.5) * 0.3, r2 * Math.PI * 2, 0.85 + r * 0.3);
-        } else if (t === T_SHOP || t === T_GATE) {
-          // 상점 가판대와 철문은 아래에서 따로 놓는다
+        } else if (t === T_SHOP || t === T_GATE || t === T_PROP) {
+          // 상점 가판대·철문·장식은 아래에서 따로 놓는다
         } else if (t !== T_FLOOR) {
           let around = 0;
           for (let dy = -1; dy <= 1; dy++)
@@ -439,16 +527,22 @@ export class World3D {
         }
       }
 
-    // 상점: 가판대 앞(길이 있는 남쪽)에 상인, 옆에 수레와 가로등
+    // 상점: 가판대 앞(길이 있는 남쪽)에 상인. 회복은 초록 천막(옆에 가로등), 공격은 빨간 천막, 방어는 나무 가판대(옆에 수레)
     for (const sh of this.level.shops) {
       const x = sh.x * U, z = sh.y * U;
-      put('stall', x, z, 0, 1.6);
-      put('cart', x + 1.6, z + 0.2, -0.5, 1.2);
-      put('lantern', x - 1.3, z + 0.8, 0, 1.4);
+      put(sh.type === 'heal' ? 'stallGreen' : sh.type === 'attack' ? 'stall' : 'stallPlain', x, z, 0, 1.6);
+      if (sh.type === 'heal') put('lantern', x - 1.3, z + 0.8, 0, 1.4);
+      if (sh.type === 'defense') put('cart', x + 1.6, z + 0.2, -0.5, 1.2);
       const npc = this.makeChar({ model: 'merchant', scale: [1, 1, 1], attack: 'emote-yes' });
       npc.root.position.set(x, 0, z + 0.6);
       npc.root.rotation.y = 0; // +z(남쪽, 길 쪽)를 본다
       this.npcs.push(npc);
+    }
+
+    // 맵 편집기로 놓은 장식
+    for (const p of this.level.props) {
+      const def = PROPS[p.t];
+      put(def.model as ModelKey, p.x + 0.5, p.y + 0.5, ((p.r ?? 0) * Math.PI) / 2, def.scale);
     }
 
     // 구역 출구의 철문: 칸마다 쇠창살 한 장, 양 끝에 망루
@@ -468,8 +562,14 @@ export class World3D {
       put('gateTower', gate.tx + 0.5, gate.ty1 + 1.5, 0, 1.15);
     }
 
-    this.makeWeather(SNOW_ZONE, 0xffffff, 0.09, 700, false);
-    this.makeWeather(VOLCANO_ZONE, 0xff7a30, 0.08, 260, true);
+    // 구역 날씨: 3 눈, 5 불씨, 6 독 포자, 7 모래바람, 8 수정 가루, 9 안개, 10 붉은 불씨
+    this.makeWeather(SNOW_ZONE, 0xffffff, 0.09, 700, 'fall');
+    this.makeWeather(VOLCANO_ZONE, 0xff7a30, 0.08, 260, 'rise');
+    this.makeWeather(6, 0x9aff60, 0.07, 220, 'rise');
+    this.makeWeather(7, 0xe8c888, 0.06, 450, 'drift');
+    this.makeWeather(8, 0xc0a8ff, 0.07, 240, 'rise');
+    this.makeWeather(9, 0xc8d0d8, 0.9, 90, 'drift', 0.18);
+    this.makeWeather(10, 0xff4020, 0.09, 320, 'rise');
 
     // 출발 지점 야영지
     const s = { x: this.level.start.x * U, z: this.level.start.y * U };
@@ -495,23 +595,25 @@ export class World3D {
     for (const [k, mats] of place) this.instance(k, mats);
   }
 
-  private makeWeather(zone: number, color: number, size: number, n: number, rise: boolean) {
+  /** mode: fall 위에서 내린다(눈) · rise 땅에서 떠오른다(불씨·포자) · drift 낮게 옆으로 흐른다(모래·안개) */
+  private makeWeather(zone: number, color: number, size: number, n: number, mode: 'fall' | 'rise' | 'drift', opacity = 0.85) {
+    const rise = mode === 'rise';
     const pos = new Float32Array(n * 3);
     for (let i = 0; i < n; i++) {
       pos[i * 3] = (Math.random() - 0.5) * SNOW_BOX.x;
-      pos[i * 3 + 1] = Math.random() * SNOW_BOX.y;
+      pos[i * 3 + 1] = Math.random() * (mode === 'drift' ? 3 : SNOW_BOX.y);
       pos[i * 3 + 2] = (Math.random() - 0.5) * SNOW_BOX.z;
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     const pts = new THREE.Points(geo, new THREE.PointsMaterial({
-      color, size, transparent: true, opacity: rise ? 1 : 0.85, depthWrite: false,
+      color, size, transparent: true, opacity: rise ? 1 : opacity, depthWrite: false,
       blending: rise ? THREE.AdditiveBlending : THREE.NormalBlending,
     }));
     pts.frustumCulled = false;
     pts.visible = false;
     this.scene.add(pts);
-    this.weather.push({ pts, zone, rise });
+    this.weather.push({ pts, zone, mode });
   }
 
   /** 카메라가 그 구역 위에 있으면 눈은 비스듬히 내리고 불씨는 흔들리며 떠오른다 (입자는 카메라를 따라다니며 상자 끝에서 반대쪽으로 돌아간다) */
@@ -526,7 +628,11 @@ export class World3D {
       const pos = w.pts.geometry.getAttribute('position') as THREE.BufferAttribute;
       const a = pos.array as Float32Array;
       for (let i = 0; i < a.length; i += 3) {
-        if (w.rise) {
+        if (w.mode === 'drift') {
+          a[i] += dt * (2.2 + (i % 5) * 0.4);
+          a[i + 1] += dt * Math.sin(this.clock * 1.5 + i) * 0.2;
+          if (a[i + 1] < 0.05) a[i + 1] = 0.05;
+        } else if (w.mode === 'rise') {
           a[i + 1] += dt * (0.5 + (i % 5) * 0.15);
           a[i] += dt * Math.sin(this.clock * 2 + i) * 0.5;
           a[i + 2] += dt * Math.cos(this.clock * 1.7 + i) * 0.3;
@@ -547,6 +653,29 @@ export class World3D {
         if (a[i] < -SNOW_BOX.x / 2) a[i] += SNOW_BOX.x;
       }
       pos.needsUpdate = true;
+    }
+  }
+
+  /** 6~10구역 칸 하나를 구역 테마로 꾸민다 (나무 칸 → theme.trees, 바위 칸 → 안쪽은 rocksHigh·길가는 rocks, 바닥 → 가끔 floor 장식) */
+  private putThemed(put: (k: ModelKey, x: number, z: number, rot?: number, s?: number, y?: number) => void, theme: ZoneTheme, t: number, tx: number, ty: number, r: number, r2: number) {
+    const { w, h, tiles, ground } = this.level;
+    const x = tx + 0.5, z = ty + 0.5, rot = r2 * Math.PI * 2;
+    const pick = (list: [ModelKey, number][]) => list[Math.floor(r * 997) % list.length];
+    if (t === T_TREE && theme.trees.length) {
+      const [k, s] = pick(theme.trees);
+      put(k, x + (r2 - 0.5) * 0.3, z + (r - 0.5) * 0.3, rot, s * (0.85 + r * 0.3));
+    } else if (t !== T_FLOOR) {
+      let around = 0;
+      for (let dy = -1; dy <= 1; dy++)
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = tx + dx, ny = ty + dy;
+          if ((dx || dy) && (nx < 0 || ny < 0 || nx >= w || ny >= h || tiles[ny * w + nx] !== T_FLOOR)) around++;
+        }
+      const [k, s] = pick(around >= 6 ? theme.rocksHigh : theme.rocks);
+      put(k, x, z, theme.square ? Math.floor(r2 * 4) * (Math.PI / 2) : rot, s);
+    } else if (ground[ty * w + tx] !== G_ROAD && r < theme.floorChance && theme.floor.length) {
+      const [k, s] = pick(theme.floor);
+      put(k, x, z, rot, s);
     }
   }
 
@@ -635,7 +764,7 @@ export class World3D {
         // 창끝을 가리는 위치(모델의 가장 높은 곳)에 구슬을 단다
         const top = new THREE.Box3().setFromObject(this.models.get(wpn.model)!.scene).max.y;
         const orb = new THREE.Mesh(
-          new THREE.SphereGeometry(0.07, 12, 8),
+          new THREE.SphereGeometry(wpn.glowSize ?? 0.07, 12, 8),
           new THREE.MeshStandardMaterial({ color: wpn.glowTip, emissive: wpn.glowTip, emissiveIntensity: 1.5 }),
         );
         orb.position.y = top;
@@ -870,16 +999,21 @@ export class World3D {
       new THREE.Mesh(new THREE.SphereGeometry(r, 12, 8), new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 1.2 }));
     switch (pr.kind) {
       case 'arrow':
-      case 'enemyArrow':
       case 'rain': {
-        const len = pr.r > 7 ? 0.8 : 0.55;
-        const mesh = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.025, 0.025, len, 5).rotateX(Math.PI / 2),
-          new THREE.MeshStandardMaterial({ color: pr.kind === 'enemyArrow' ? 0xff6a50 : 0xf0e6c0, emissive: pr.r > 7 ? 0x665522 : 0x000000 }),
-        );
-        if (pr.kind === 'rain') mesh.rotation.x = Math.PI / 2;
-        return mesh;
+        // 궁수 화살: 화살 모델. 촉이 진행 방향(+z, lookAt 기준)을 향하게 돌려 둔다. 저격·폭풍의 화살(r>7)은 더 크다
+        const model = this.models.get('arrowModel')!.scene.clone();
+        model.rotation.y = Math.PI;
+        model.scale.setScalar(pr.r > 7 ? 0.95 : 0.7);
+        const g = new THREE.Group();
+        g.add(model);
+        if (pr.kind === 'rain') g.rotation.x = Math.PI / 2; // 화살비는 촉이 아래로
+        return g;
       }
+      case 'enemyArrow': // 적(해골 궁수 등)의 화살은 플레이어 화살과 구분되게 빨간 막대
+        return new THREE.Mesh(
+          new THREE.CylinderGeometry(0.025, 0.025, 0.55, 5).rotateX(Math.PI / 2),
+          new THREE.MeshStandardMaterial({ color: 0xff6a50 }),
+        );
       case 'orb': return glow(0xc89aff, 0.18);
       case 'iceOrb': return glow(0x9ae4ff, 0.2); // 얼음 마녀의 냉기 구슬
       case 'rock': // 고블린 투척병의 돌
@@ -915,6 +1049,9 @@ export class World3D {
       const model = obj.userData.model as THREE.Object3D;
       model.position.y = (d.z > 0 ? d.z : Math.sin(this.clock * 3 + d.id) * 3 + 5) * U;
       model.rotation.y = this.clock * 1.2 + d.id;
+      // 빛기둥은 천천히 숨 쉬듯 밝아졌다 어두워진다
+      const beam = obj.userData.beam as THREE.Mesh | undefined;
+      if (beam) (beam.material as THREE.MeshBasicMaterial).opacity = 0.22 + 0.13 * Math.sin(this.clock * 3 + d.id);
     }
     for (const [id, obj] of this.drops) if (!seen.has(id)) {
       this.scene.remove(obj);
@@ -946,14 +1083,26 @@ export class World3D {
     const model = this.models.get(key)!.scene.clone();
     model.scale.setScalar(DROP_SCALE[key] ?? 1);
     if (d.kind === 'item') {
-      // 장비 상자는 등급 색으로 은은하게 빛난다
+      // 장비 상자는 등급 색으로 칠하고 빛나게 한다 (일반은 나무색 그대로)
+      const look = CHEST_LOOK[d.item!.rarity];
+      const tint = new THREE.Color(0xffffff).lerp(new THREE.Color(glow), look.tint);
       model.traverse((o) => {
         const mesh = o as THREE.Mesh;
         if (!mesh.isMesh) return;
         const mat = (mesh.material as THREE.MeshStandardMaterial).clone();
-        mat.emissive = new THREE.Color(glow).multiplyScalar(0.35);
+        mat.color.multiply(tint);
+        mat.emissive = new THREE.Color(glow).multiplyScalar(look.glow);
         mesh.material = mat;
       });
+      // 영웅·전설은 멀리서도 보이게 등급 색 빛기둥
+      if (look.pillar > 0) {
+        const beam = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.16, 0.24, look.pillar, 16, 1, true).translate(0, look.pillar / 2, 0),
+          new THREE.MeshBasicMaterial({ color: glow, transparent: true, opacity: 0.35, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }),
+        );
+        group.add(beam);
+        group.userData.beam = beam;
+      }
     }
     group.add(model);
     group.userData.model = model;

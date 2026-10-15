@@ -1,0 +1,10 @@
+Sound effects (converted to AAC .m4a for this game)
+
+License: Creative Commons Zero, CC0 1.0 Universal (public domain)
+https://creativecommons.org/publicdomain/zero/1.0/
+
+Sources:
+- "RPG Sound Pack": swing, magic, spell, sword-unsheathe, cloth-heavy, NPC voices (slime, gutteral beast,
+  ogre, shade, giant, beetle), inventory (coin, bubble, armor-light, metal-small, wood-small), interface
+- "RPG sounds" by Kenney (www.kenney.nl): knifeSlice, chop, handleCoins, bookFlip, doorOpen, metalLatch
+- "SoundPack01": Rise03 (level up), Upper01 (revive), Downer01 (down), Rise05 (victory), FX02 (defeat)

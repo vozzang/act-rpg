@@ -1,8 +1,9 @@
 // 맵 파일: 개발자가 맵 편집기(editor.html)로 만든 맵. 모든 플레이어가 같은 맵(src/game/maps/world.json)을 플레이한다.
 // 파일은 사람이 읽고 git으로 비교하기 쉽게 타일을 한 줄씩 문자열로 적는다. 좌표는 모두 타일 단위다.
 import { ELITES, GATE_KEEPERS, TILE } from './data';
-import { G_GRASS, G_ROAD, G_STONE, T_FLOOR, T_GATE, T_ROCK, T_SHOP, T_TREE, type Gate, type Level, type Spawn } from './level';
-import type { EnemyKind } from './types';
+import { G_GRASS, G_ROAD, G_STONE, T_FLOOR, T_GATE, T_PROP, T_ROCK, T_SHOP, T_TREE, type Gate, type Level, type Spawn } from './level';
+import { PROPS, type PropPlacement } from './props';
+import type { EnemyKind, ShopType } from './types';
 
 /** 맵에 놓는 몬스터. elite1·elite2는 그 구역의 첫째·둘째 중간보스(ELITES), keeper는 그 구역 출구 문지기(GATE_KEEPERS) */
 export type SpawnType = Exclude<EnemyKind, 'boss'> | 'elite1' | 'elite2' | 'keeper';
@@ -24,12 +25,13 @@ export interface MapFile {
   arenaTx: number; // 보스 방이 시작하는 타일 x
   start: { x: number; y: number };
   boss: { x: number; y: number }; // 흑룡이 기다리는 곳 (보스 방 가운데쯤)
-  shops: { x: number; y: number }[]; // 상점 가판대 칸
+  shops: { x: number; y: number; type?: ShopType }[]; // 상점 가판대 칸 (type이 없으면 예전 맵: 공격 상점으로 본다)
   gates: { x: number; y0: number; y1: number }[]; // 구역 출구 문 (x열의 y0~y1칸). 구역마다 하나
   spawns: { t: SpawnType; x: number; y: number }[];
+  props?: PropPlacement[]; // 장식 물건 (길을 막는 것은 그 칸이 막힌다)
 }
 
-const TILE_CH: Record<number, string> = { [T_FLOOR]: '.', [T_TREE]: 'T', [T_ROCK]: 'R', [T_SHOP]: '.', [T_GATE]: '.' };
+const TILE_CH: Record<number, string> = { [T_FLOOR]: '.', [T_TREE]: 'T', [T_ROCK]: 'R', [T_SHOP]: '.', [T_GATE]: '.', [T_PROP]: '.' };
 const CH_TILE: Record<string, number> = { '.': T_FLOOR, T: T_TREE, R: T_ROCK };
 const GROUND_CH: Record<number, string> = { [G_GRASS]: '.', [G_ROAD]: '=', [G_STONE]: '#' };
 const CH_GROUND: Record<string, number> = { '.': G_GRASS, '=': G_ROAD, '#': G_STONE };
@@ -59,9 +61,10 @@ export function mapFromLevel(level: Level): MapFile {
     arenaTx: level.arenaTx,
     start: { x: tile(level.start.x), y: tile(level.start.y) },
     boss: { x: tile(boss.x), y: tile(boss.y) },
-    shops: level.shops.map((s) => ({ x: Math.floor(s.x / TILE), y: Math.floor(s.y / TILE) })),
+    shops: level.shops.map((s) => ({ x: Math.floor(s.x / TILE), y: Math.floor(s.y / TILE), type: s.type })),
     gates: level.gates.map((g) => ({ x: g.tx, y0: g.ty0, y1: g.ty1 })),
     spawns: level.spawns.filter((s) => s.kind !== 'boss').map((s) => ({ t: keeperType(s), x: tile(s.x), y: tile(s.y) })),
+    props: level.props.map((p) => ({ ...p })),
   };
 }
 
@@ -81,6 +84,8 @@ export function levelFromMap(m: MapFile): Level {
   const gates: Gate[] = [...m.gates].sort((a, b) => a.x - b.x).map((g) => ({ tx: g.x, ty0: g.y0, ty1: g.y1, zone: zone(g.x - 1) }));
   for (const g of gates) for (let y = g.ty0; y <= g.ty1; y++) tiles[y * w + g.tx] = T_GATE;
   for (const s of m.shops) tiles[s.y * w + s.x] = T_SHOP;
+  const props = (m.props ?? []).filter((p) => PROPS[p.t]); // 없어진 종류는 무시
+  for (const p of props) if (PROPS[p.t].block && tiles[p.y * w + p.x] === T_FLOOR) tiles[p.y * w + p.x] = T_PROP;
 
   const spawns: Spawn[] = [];
   for (const s of m.spawns) {
@@ -106,11 +111,11 @@ export function levelFromMap(m: MapFile): Level {
   const arenaCenter = n ? { x: (sx / n) * TILE, y: (sy / n) * TILE } : { x: world(m.boss.x), y: world(m.boss.y) };
 
   return {
-    w, h, tiles, ground, spawns, gates,
+    w, h, tiles, ground, spawns, gates, props,
     zoneStartsTx: [...m.zoneStartsTx],
     arenaTx: m.arenaTx,
     arenaCenter,
-    shops: m.shops.map((s) => ({ x: world(s.x), y: world(s.y), zone: zone(s.x) })),
+    shops: m.shops.map((s) => ({ x: world(s.x), y: world(s.y), zone: zone(s.x), type: s.type ?? 'attack' })),
     start: { x: world(m.start.x), y: world(m.start.y) },
   };
 }
@@ -119,7 +124,8 @@ export function levelFromMap(m: MapFile): Level {
 export function validateMap(m: MapFile): string[] {
   const out: string[] = [];
   const zones = m.zoneStartsTx.length;
-  const blocked = (x: number, y: number) => x < 0 || y < 0 || x >= m.w || y >= m.h || (m.tiles[y][x] ?? 'R') !== '.';
+  const propBlock = new Set((m.props ?? []).filter((p) => PROPS[p.t]?.block).map((p) => p.y * m.w + p.x));
+  const blocked = (x: number, y: number) => x < 0 || y < 0 || x >= m.w || y >= m.h || (m.tiles[y][x] ?? 'R') !== '.' || propBlock.has(y * m.w + x);
   const at = (p: { x: number; y: number }) => [Math.floor(p.x + 0.5), Math.floor(p.y + 0.5)] as const;
   const zone = (tx: number) => zoneAt(m.zoneStartsTx, tx);
 
@@ -189,6 +195,7 @@ export function stringifyMap(m: MapFile): string {
   "shops": ${list(m.shops)},
   "gates": ${list(m.gates)},
   "spawns": ${list(m.spawns)},
+  "props": ${list(m.props ?? [])},
   "tiles": ${list(m.tiles)},
   "ground": ${list(m.ground)}
 }

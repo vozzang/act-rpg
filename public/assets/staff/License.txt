@@ -1,0 +1,7 @@
+Staff (staff01.blend)
+
+License: Creative Commons Zero, CC0 1.0 Universal (public domain)
+https://creativecommons.org/publicdomain/zero/1.0/
+
+Converted to glTF (GLB) for this game: textured with the packed staff01Ds.png, origin at the grip
+(30% up from the bottom), head pointing +Y, length 0.75.

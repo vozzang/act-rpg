@@ -1,7 +1,7 @@
 // 상점 창: 상인 곁에서 E(게임패드 LT)로 열고, 숫자키·클릭(게임패드는 방향패드로 고르고 A)으로 산다.
 // E·Esc(게임패드 B) 또는 멀어지면 닫힌다.
 import Phaser from 'phaser';
-import { FOOD, INV_SIZE, RARITY, SHOP, VIEW_W, ZONE_NAMES, itemName, itemStatText } from '../game/data';
+import { FOOD, INV_SIZE, RARITY, SHOP_TYPES, VIEW_W, ZONE_NAMES, itemName, itemStatText } from '../game/data';
 import type { Player, Shop, ShopEntry } from '../game/types';
 import type { Device } from './Hud';
 import { makeText } from './ui';
@@ -10,8 +10,9 @@ const W = 520;
 const ROW_H = 54;
 const X = (VIEW_W - W) / 2;
 const Y = 96;
-const ROWS = 2 + SHOP.items;
-const H = 70 + ROWS * ROW_H + 34;
+const ROWS = 4; // 가장 많이 파는 상점(공격 상점)의 줄 수. 줄이 적은 상점은 창이 짧아진다
+const panelH = (rows: number) => 70 + rows * ROW_H + 34;
+const H = panelH(ROWS);
 
 type Row = { zone: Phaser.GameObjects.Zone; title: Phaser.GameObjects.Text; detail: Phaser.GameObjects.Text; price: Phaser.GameObjects.Text };
 
@@ -27,6 +28,7 @@ export class ShopPanel {
   private rows: Row[] = [];
   private hoverRow = -1;
   private selected = 0; // 게임패드로 고른 줄
+  private count = ROWS; // 지금 열린 상점의 줄 수
 
   constructor(scene: Phaser.Scene, private onBuy: (idx: number) => void) {
     const depth = 140;
@@ -63,7 +65,7 @@ export class ShopPanel {
 
   /** 방향패드 위·아래 */
   navigate(dy: number) {
-    this.selected = (this.selected + dy + ROWS) % ROWS;
+    this.selected = (this.selected + dy + this.count) % this.count;
   }
 
   /** 게임패드 A: 고른 줄을 산다 */
@@ -95,11 +97,23 @@ export class ShopPanel {
   update(shop: Shop, me: Player, device: Device) {
     const g = this.g;
     g.clear();
-    g.fillStyle(0x0d1420, 0.94).fillRoundedRect(X, Y, W, H, 10);
-    g.lineStyle(2, 0xc8a050, 0.9).strokeRoundedRect(X, Y, W, H, 10);
-    this.title.setText(`상점 · ${shop.zone}구역 ${ZONE_NAMES[shop.zone - 1]}`);
+    this.count = shop.stock.length;
+    const h = panelH(this.count);
+    const color = SHOP_TYPES[shop.type].color;
+    g.fillStyle(0x0d1420, 0.94).fillRoundedRect(X, Y, W, h, 10);
+    g.lineStyle(2, color, 0.9).strokeRoundedRect(X, Y, W, h, 10);
+    this.footer.setY(Y + h - 22);
+    this.rows.forEach((r, i) => {
+      const on = i < this.count;
+      r.title.setVisible(on);
+      r.detail.setVisible(on);
+      r.price.setVisible(on);
+      if (on) r.zone.setInteractive();
+      else r.zone.disableInteractive();
+    });
+    this.title.setText(`${SHOP_TYPES[shop.type].name} · ${shop.zone}구역 ${ZONE_NAMES[shop.zone - 1]}`).setColor(`#${color.toString(16).padStart(6, '0')}`);
     this.footer.setText(device === 'pad' ? '방향패드: 고르기     A: 구매     B: 닫기'
-      : device === 'touch' ? '줄을 눌러 구매     줍기 버튼 · 멀어지면 닫힘' : '숫자키 1~5 또는 클릭: 구매     E · Esc: 닫기');
+      : device === 'touch' ? '줄을 눌러 구매     줍기 버튼 · 멀어지면 닫힘' : `숫자키 1~${this.count} 또는 클릭: 구매     E · Esc: 닫기`);
     this.goldText.setText(`보유 ${me.gold} G`);
 
     shop.stock.forEach((e, i) => {
@@ -114,7 +128,7 @@ export class ShopPanel {
       r.title.setText(`[${i + 1}] ${title}`).setColor(e.sold ? '#666666' : color);
       r.detail.setText(e.sold ? '' : detail);
       r.price
-        .setText(e.sold ? '품절' : `${e.price} G`)
+        .setText(e.sold ? '구매함' : `${e.price} G`)
         .setColor(e.sold ? '#666666' : affordable ? '#ffd040' : '#ff6060');
     });
   }

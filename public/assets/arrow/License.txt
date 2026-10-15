@@ -1,0 +1,6 @@
+Arrow (Arrow.fbx, 2022)
+
+License: Creative Commons Zero, CC0 1.0 Universal (public domain)
+https://creativecommons.org/publicdomain/zero/1.0/
+
+Converted to glTF (GLB) for this game: centered, scaled to length 1, tip pointing -Z.

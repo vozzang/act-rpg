@@ -8,7 +8,12 @@
 //   ┏━━━━━━━━━━┛ ┗━━━━━━━━━━┓   
 //   ┗━━━━━━━━━━━━━━━━━━━━━━━┛   (1구역: 위→아래, 2구역: 아래→위, ...)
 import { ELITES, GATE_KEEPERS, TILE } from './data';
-import type { EnemyKind } from './types';
+import type { PropPlacement } from './props';
+import type { EnemyKind, ShopType } from './types';
+
+/** 지점 하나의 가판대 순서(왼쪽부터)와 간격(타일) */
+export const SHOP_ORDER: ShopType[] = ['heal', 'attack', 'defense'];
+const SHOP_GAP = 4;
 
 // 장애물 (지나갈 수 없음)
 export const T_FLOOR = 0;
@@ -16,6 +21,7 @@ export const T_TREE = 1;
 export const T_ROCK = 2;
 export const T_SHOP = 3; // 상점 가판대 (지나갈 수 없고, 그림은 렌더러가 따로 그린다)
 export const T_GATE = 4; // 구역 출구의 철문. 그 구역의 문지기를 쓰러뜨리면 바닥(T_FLOOR)으로 바뀐다
+export const T_PROP = 5; // 길을 막는 장식 물건(통·천막·울타리 등)이 놓인 칸. 그림은 렌더러가 Level.props로 그린다
 
 // 바닥 무늬 (지나갈 수 있음, 그리기 전용)
 export const G_GRASS = 0;
@@ -29,7 +35,7 @@ const BORDER = 2; // 맵 위아래 가장자리 숲
 const TURN_W = 7; // 꺾이는 곳 통로 폭
 export const MAP_H = BORDER * 2 + LANES * LANE_H + (LANES - 1) * WALL_H;
 const START_W = 10;
-const ZONE_W = 43; // 구역 하나의 가로 길이(타일). 처음 36에서 1.2배로 늘렸다
+const ZONE_W = 52; // 구역 하나의 가로 길이(타일). 처음 36에서 1.2배씩 두 번 늘렸다
 const ARENA_W = 26;
 
 const laneTop = (i: number) => BORDER + i * (LANE_H + WALL_H);
@@ -61,8 +67,9 @@ export interface Level {
   zoneStartsTx: number[]; // 각 구역이 시작하는 타일 x (index 0 = 1구역)
   arenaTx: number;
   arenaCenter: { x: number; y: number };
-  shops: { x: number; y: number; zone: number }[]; // 상인 위치 (월드 좌표)
+  shops: { x: number; y: number; zone: number; type: ShopType }[]; // 상인 위치 (월드 좌표)
   gates: Gate[]; // [z - 1] = z구역 출구
+  props: PropPlacement[]; // 맵 편집기로 놓은 장식 (타일 좌표)
   start: { x: number; y: number };
 }
 
@@ -84,7 +91,15 @@ const ZONE_POOLS: EnemyKind[][] = [
   ['goblin', 'skeleton', 'orc', 'raider', 'raider', 'iceWitch'], // 3 얼어붙은 설원
   ['skeleton', 'orc', 'goblin', 'darkKnight', 'zombie', 'zombie'], // 4 오크 요새
   ['orc', 'skeleton', 'goblin', 'flameKnight', 'flameKnight', 'pyromancer'], // 5 불타는 화산
+  ['zombie', 'zombie', 'slime', 'assassin', 'thrower', 'iceWitch'], // 6 독기의 늪
+  ['bandit', 'assassin', 'skeleton', 'raider', 'thrower', 'bandit'], // 7 사막 유적
+  ['iceWitch', 'darkKnight', 'skeleton', 'orc', 'raider', 'iceWitch'], // 8 수정 동굴
+  ['zombie', 'skeleton', 'darkKnight', 'pyromancer', 'zombie', 'assassin'], // 9 망령의 묘지
+  ['flameKnight', 'darkKnight', 'pyromancer', 'assassin', 'orc', 'flameKnight'], // 10 마왕성
 ];
+
+/** 구역별 벽 칸 중 바위 비율 (나머지는 나무). 보스 방은 모두 바위 */
+const ROCK_CHANCE = [0.12, 0.12, 0.3, 0.6, 1, 0.25, 0.75, 1, 0.45, 1];
 
 export function buildLevel(seed: number): Level {
   const rng = mulberry32(seed);
@@ -106,9 +121,9 @@ export function buildLevel(seed: number): Level {
   // 1) 전부 막아 두고 길만 판다. 앞쪽 구역은 숲, 뒤쪽 구역(4·5)은 바위가 많다
   for (let x = 0; x < w; x++)
     for (let y = 0; y < h; y++) {
-      // 3구역 설원은 눈 덮인 침엽수림에 바위가 섞이고, 4구역 요새와 5구역 화산은 바위투성이
+      // 구역마다 벽이 나무인지 바위인지 비율이 다르다 (ROCK_CHANCE)
       const zone = zoneOfTxRaw(x);
-      const rockChance = x >= arenaTx ? 1 : zone === 5 ? 1 : zone === 4 ? 0.6 : zone === 3 ? 0.3 : 0.12;
+      const rockChance = x >= arenaTx ? 1 : ROCK_CHANCE[zone - 1] ?? 0.5;
       tiles[at(x, y)] = rng() < rockChance ? T_ROCK : T_TREE;
     }
 
@@ -179,7 +194,7 @@ export function buildLevel(seed: number): Level {
       }
     }
     // 통로 안의 나무·바위 덤불 (길에서 떨어진 곳에만)
-    const blockType = z >= 3 ? T_ROCK : T_TREE; // 4·5구역은 바위 덤불
+    const blockType = (ROCK_CHANCE[z] ?? 0.5) >= 0.5 ? T_ROCK : T_TREE; // 바위가 많은 구역은 바위 덤불
     for (let c = 0; c < 10 + z * 2; c++) {
       const lane = Math.floor(rng() * LANES);
       const cx = zs + 2 + Math.floor(rng() * (ZONE_W - 4));
@@ -209,11 +224,15 @@ export function buildLevel(seed: number): Level {
   // 5) 상점: 출발 지점과 2구역부터 각 구역 입구 통로의 위쪽 가장자리
   const shops: Level['shops'] = [];
   const shopSpots = [{ tx: START_W - 4, lane: 0 }, ...zoneStartsTx.slice(1).map((zs, i) => ({ tx: zs + 4, lane: (i + 1) % 2 === 0 ? 0 : 2 }))];
-  for (const { tx, lane } of shopSpots) {
+  // 지점마다 가판대 셋을 4칸 간격으로 나란히 놓는다: 회복 · 공격 · 방어
+  for (const { tx: x0, lane } of shopSpots) {
     const ty = laneTop(lane);
-    for (let dy = 0; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) floor(tx + dx, ty + dy);
-    setTile(tx, ty, T_SHOP);
-    shops.push({ x: (tx + 0.5) * TILE, y: (ty + 0.5) * TILE, zone: zoneOfTxRaw(tx) });
+    SHOP_ORDER.forEach((type, k) => {
+      const tx = x0 + k * SHOP_GAP;
+      for (let dy = 0; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) floor(tx + dx, ty + dy);
+      setTile(tx, ty, T_SHOP);
+      shops.push({ x: (tx + 0.5) * TILE, y: (ty + 0.5) * TILE, zone: zoneOfTxRaw(tx), type });
+    });
   }
 
   // 6) 문: 구역마다 출구(다음 구역 입구, 마지막 구역은 보스 방 입구)를 막는다. 막는 칸은 맨 끝(8단계)에 채운다
@@ -229,7 +248,7 @@ export function buildLevel(seed: number): Level {
   const world = (t: number) => (t + 0.5) * TILE;
   for (let z = 1; z <= zones; z++) {
     const path = paths[z];
-    const packs = Math.round((14 + 2 * z) * 1.2); // 1구역 19무리 ~ 5구역 29무리 (구역이 1.2배로 길어진 만큼)
+    const packs = Math.round((16 + z) * 1.44); // 1구역 24무리 ~ 10구역 37무리 (구역이 처음보다 1.44배 길어진 만큼)
     const skip = 10;
     for (let k = 0; k < packs; k++) {
       const p = path[Math.floor(skip + ((k + rng() * 0.6) / packs) * (path.length - skip - 4))];
@@ -271,7 +290,7 @@ export function buildLevel(seed: number): Level {
   spawns.push({ kind: 'boss', x: arenaCenter.x + TILE * 4, y: arenaCenter.y, zone: zones });
 
   return {
-    w, h, tiles, ground, spawns, zoneStartsTx, arenaTx, arenaCenter, shops, gates,
+    w, h, tiles, ground, spawns, zoneStartsTx, arenaTx, arenaCenter, shops, gates, props: [],
     start: { x: world(startTile.x), y: world(startTile.y) },
   };
 }

@@ -5,12 +5,16 @@
 //  - 위: 이 Phaser 장면 (투명 배경) — HUD, 지도, 이름표, 데미지 숫자 같은 글자와 표시
 // 이 장면은 카메라를 움직이지 않으므로 Phaser 좌표가 곧 화면 좌표다.
 import Phaser from 'phaser';
-import { ATTR_KEYS, ATTR_NAMES, CLASSES, ELITE, ENEMIES, INV_SIZE, RARITY, REVIVE_TIME, SHOP, SNAPSHOT_EVERY, TICK_RATE, itemName, itemStatText } from '../game/data';
+import { ATTR_KEYS, ATTR_NAMES, CLASSES, ELITE, ENEMIES, INV_SIZE, RARITY, REVIVE_TIME, SHOP, SHOP_TYPES, SNAPSHOT_EVERY, TICK_RATE, itemName, itemStatText } from '../game/data';
 import { gameLevel } from '../game/world';
 import { Sim } from '../game/sim';
 import { EMPTY_INPUT, type AttrKey, type GameEvent, type InputState, type Player, type Shop, type Snapshot } from '../game/types';
 import type { Session } from '../session';
 import { Effects } from './Effects';
+import { StoryPanel } from './StoryPanel';
+import { Sound } from './Sound';
+import { playEventSound } from './sfxEvents';
+import { STORY_BOSS, STORY_ENDING, STORY_INTRO, STORY_ZONES } from '../game/story';
 import { CharMenu } from './CharMenu';
 import { Hud, type Device } from './Hud';
 import { MapView } from './MapView';
@@ -33,6 +37,15 @@ export class GameScene extends Phaser.Scene {
   private effects!: Effects;
   private shopPanel!: ShopPanel;
   private charMenu!: CharMenu;
+  private story!: StoryPanel;
+  private sfx!: Sound;
+  private uiSoundState = ''; // 상점·메뉴·스토리 쪽이 바뀌었는지 비교해 효과음을 낸다
+  private endSoundPlayed = false;
+  // 스토리 진행: 인트로를 띄웠는지, 몇 구역까지 이야기를 봤는지, 흑룡·엔딩 이야기를 봤는지
+  private storyStarted = false;
+  private storyZone = 0;
+  private storyBoss = false;
+  private endingDone = false;
   private touch?: TouchControls; // 터치 기기에서만 만든다
 
   // 호스트
@@ -88,6 +101,12 @@ export class GameScene extends Phaser.Scene {
     this.effects = new Effects(this, this.world, s.myId);
     this.shopPanel = new ShopPanel(this, (idx) => this.buy(idx));
     this.charMenu = new CharMenu(this, (attr) => this.allocate(attr), (idx) => this.useSlot(idx));
+    this.story = new StoryPanel(this);
+    this.sfx = new Sound();
+    const stopSfx = () => this.sfx.destroy();
+    this.events.once('shutdown', stopSfx);
+    this.events.once('destroy', stopSfx);
+    if (s.skipStory) this.endingDone = true; // 건너뛰기를 골랐으면 엔딩 이야기 없이 바로 결과 화면
     if (isTouchDevice()) {
       this.touch = new TouchControls(this);
       this.device = 'touch';
@@ -141,15 +160,23 @@ export class GameScene extends Phaser.Scene {
     this.hud.setDevice(this.device);
     this.map.setMinimapVisible(this.device !== 'touch'); // 터치 화면에서는 오른쪽 아래를 버튼이 쓴다
     this.touch?.setVisible(this.device === 'touch');
+    // 스토리 대화창이 열려 있으면 Enter·A로 넘기고 Esc·B로 건너뛴다 (그 키가 게임 조작으로 새지 않게 잠근다)
+    if (this.story.isOpen) {
+      if (Phaser.Input.Keyboard.JustDown(this.keys.ENTER) || this.pad.pressed(BTN.A)) this.story.next();
+      if (Phaser.Input.Keyboard.JustDown(this.keys.ESC) || this.pad.pressed(BTN.B)) this.story.skip();
+      this.pad.lockHeld([BTN.A, BTN.B]);
+    }
     const input = this.readInput();
-    this.readHotkeys();
+    if (!this.story.isOpen) this.readHotkeys();
     let snap: Snapshot | undefined;
     let events: GameEvent[] = [];
 
     if (this.sim) {
       this.sim.setInput(this.session.myId, input);
-      events = this.stepHost(dt);
-      snap = this.sim.snapshot([]);
+      // 혼자 할 때는 스토리를 보는 동안 게임이 멈춘다 (여럿이 할 때는 멈추지 않는다)
+      const paused = this.session.role === 'solo' && this.story.isOpen;
+      events = paused ? [] : this.stepHost(dt);
+      snap = this.sim.snapshot([], undefined, this.session.myId); // 상점 품절은 내 기준
     } else {
       this.sendInput(input);
       snap = this.interpolated();
@@ -167,14 +194,61 @@ export class GameScene extends Phaser.Scene {
     this.map.update(this.hud.g, snap, this.keys.TAB.isDown,
       Phaser.Input.Keyboard.JustDown(this.keys.M) || this.pad.pressed(BTN.VIEW) || !!this.touch?.consume('map'));
     for (const e of events) this.effects.play(e, snap, this.me);
+    this.playSounds(events, snap);
     this.touch?.update(this.me); // 버튼 그리기, '방금 눌림' 초기화 (이번 프레임에 다 쓴 뒤에)
+    this.updateStory(snap);
+    this.story.update(dt, this.device);
 
-    if (snap.status !== 'playing') {
+    // 승리하면 엔딩 이야기를 다 본(또는 건너뛴) 뒤에 결과 화면을 띄운다
+    if (snap.status !== 'playing' && (snap.status !== 'victory' || this.endingDone)) {
       const canReturn = this.session.role !== 'client';
       this.effects.showEnd(snap, canReturn ? this.session.backToLobby : null);
       if (canReturn && (Phaser.Input.Keyboard.JustDown(this.keys.ENTER) || this.pad.pressed(BTN.A))) this.session.backToLobby();
     }
   }
+
+  /** 이벤트·창 열고 닫기·스토리 쪽 넘김·승패에 맞는 효과음 */
+  private playSounds(events: GameEvent[], s: Snapshot) {
+    const sfx = this.sfx;
+    if (this.me) sfx.listener = { x: this.me.x, y: this.me.y };
+    for (const e of events) playEventSound(sfx, e, this.session.myId);
+    // 창이 열리고 닫히거나 스토리 쪽이 넘어갈 때
+    const st = `${this.shopPanel.openId}|${this.charMenu.isOpen}|${this.story.pageKey}`;
+    if (st !== this.uiSoundState) {
+      const [shop0, menu0, page0] = this.uiSoundState.split('|');
+      const [shop1, menu1, page1] = st.split('|');
+      if (this.uiSoundState && (shop0 !== shop1 || menu0 !== menu1)) sfx.play('ui1', { volume: 0.5 });
+      if (page1 && page1 !== page0) sfx.pick(['page1', 'page2'], { volume: 0.45 });
+      this.uiSoundState = st;
+    }
+    if (s.status !== 'playing' && !this.endSoundPlayed) {
+      this.endSoundPlayed = true;
+      sfx.play(s.status === 'victory' ? 'victory' : 'defeat', { volume: 0.8, vary: 0 });
+    }
+  }
+
+  /** 스토리를 띄울 때인지 본다: 처음 시작(인트로), 새 구역에 처음 들어섰을 때, 흑룡이 깨어났을 때, 승리했을 때(엔딩) */
+  private updateStory(s: Snapshot) {
+    if (this.session.skipStory) return;
+    if (!this.storyStarted) {
+      this.storyStarted = true;
+      this.story.play(STORY_INTRO, true);
+    }
+    while (this.storyZone < s.zone && this.storyZone < STORY_ZONES.length) {
+      this.story.play(STORY_ZONES[this.storyZone]);
+      this.storyZone++;
+    }
+    if (s.boss && !this.storyBoss) {
+      this.storyBoss = true;
+      this.story.play(STORY_BOSS);
+    }
+    if (s.status === 'victory' && !this.endingDone && !this.endingStarted) {
+      this.endingStarted = true;
+      this.story.play(STORY_ENDING, true, () => (this.endingDone = true));
+    }
+  }
+
+  private endingStarted = false;
 
   /** 호스트: 게임을 dt초만큼 진행하고, 참가자에게 스냅샷을 보낸다. 생긴 이벤트를 돌려준다. */
   private stepHost(dt: number): GameEvent[] {
@@ -228,7 +302,7 @@ export class GameScene extends Phaser.Scene {
   //   View 전체 지도 · Menu 캐릭터 메뉴 · 메뉴/상점 안에서는 방향패드 고르기, A 실행, B 닫기
 
   private get uiOpen() {
-    return this.shopPanel.openId !== null || this.charMenu.isOpen;
+    return this.shopPanel.openId !== null || this.charMenu.isOpen || this.story.isOpen;
   }
 
   private readInput(): InputState {
@@ -544,7 +618,9 @@ export class GameScene extends Phaser.Scene {
       if (!sh) return void t.setVisible(false);
       const { sx, sy } = this.world.toScreen(sh.x, sh.y - 14);
       const open = this.shopPanel.openId === i;
-      t.setText(near?.id === i && !open ? `상점\n[${this.device === 'pad' ? 'LT' : this.device === 'touch' ? '줍기' : 'E'}] 열기` : '상점').setAlign('center')
+      const name = SHOP_TYPES[sh.type].name;
+      t.setColor(`#${SHOP_TYPES[sh.type].color.toString(16).padStart(6, '0')}`);
+      t.setText(near?.id === i && !open ? `${name}\n[${this.device === 'pad' ? 'LT' : this.device === 'touch' ? '줍기' : 'E'}] 열기` : name).setAlign('center')
         .setPosition(sx, sy - this.world.heightPx(70)).setVisible(!open);
     });
   }

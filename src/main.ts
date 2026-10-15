@@ -1,4 +1,5 @@
 // 로비(방 만들기/참가/직업 선택)와 게임 시작/종료를 관리한다.
+import { Sound } from './render/Sound';
 import Phaser from 'phaser';
 import { ATTR_KEYS, ATTR_NAMES, CLASSES, CLASS_ORDER, VIEW_H, VIEW_W, deriveStats } from './game/data';
 import type { ClassId, LobbyPlayer } from './game/types';
@@ -62,7 +63,7 @@ function renderRoom() {
       <div class="name">${def.name}</div>
       <div class="desc">${def.desc}</div>
       <div class="skill">${def.skills.map((sk, i) => `<div>Lv.${sk.unlock} ${i === 3 ? '★' : ''}<b>${sk.name}</b> <span class="mp">MP ${sk.mp}</span></div>`).join('')}</div>
-      <div class="stats">주 능력치: ${ATTR_NAMES[def.mainAttr]}<br />${attrs}<br />HP ${st.maxHp} · 공격 ${st.atk} · 방어 ${st.def} · 치명 ${Math.round(st.crit * 100)}%</div>
+      <div class="stats">주 능력치: ${ATTR_NAMES[def.mainAttr]}<br />${attrs}<br />HP ${st.maxHp} · 공격 ${st.atk} · 방어 ${st.def} · 치명 ${Math.round(st.crit * 100)}% · 회피 ${Math.round(st.dodge * 100)}%</div>
       <div class="owner"></div>`;
     (card.querySelector('.owner') as HTMLElement).textContent = owner ? owner.name : '';
     card.onclick = () => pickClass(id);
@@ -245,6 +246,7 @@ function startGame(seed: number, players: LobbyPlayer[]) {
   enterMobileFullscreen();
   session = {
     role, myId, seed, players: players.map((p) => ({ ...p })), host, client,
+    skipStory: $<HTMLInputElement>('skip-story').checked,
     backToLobby: () => {
       host?.broadcast({ t: 'toLobby' });
       endGame();
@@ -281,6 +283,23 @@ try {
 } catch {
   /* 무시 */
 }
+// 스토리 건너뛰기: 이 브라우저에 기억한다 (바로 시작(autostart)보다 먼저 읽어 둔다)
+try {
+  $<HTMLInputElement>('skip-story').checked = localStorage.getItem('actrpg-skip-story') === '1';
+} catch {
+  /* 무시 */
+}
+// 효과음 크기 (0~100%, 이 브라우저에 기억. 바꾸면 다음 게임부터 적용)
+{
+  const vol = $<HTMLInputElement>('volume');
+  const show = () => ($('volume-v').textContent = vol.value === '0' ? '끔' : `${vol.value}%`);
+  vol.value = String(Math.round(Sound.volume * 100));
+  show();
+  vol.oninput = () => {
+    Sound.volume = Number(vol.value) / 100;
+    show();
+  };
+}
 const params = new URLSearchParams(location.search);
 const roomParam = params.get('room');
 if (roomParam) $<HTMLInputElement>('code').value = roomParam.toUpperCase();
@@ -307,6 +326,13 @@ if (import.meta.env.DEV) {
   $('menu-error').after(link);
 }
 $('btn-leave').onclick = leave;
+$<HTMLInputElement>('skip-story').onchange = (e) => {
+  try {
+    localStorage.setItem('actrpg-skip-story', (e.target as HTMLInputElement).checked ? '1' : '0');
+  } catch {
+    /* 무시 */
+  }
+};
 // 참가자는 게임이 네트워크 메시지로 시작돼 자동 전체 화면이 막히므로, 대기실에서 미리 누를 수 있게 한다
 $('btn-fullscreen').onclick = () => document.documentElement.requestFullscreen?.().catch(() => {});
 $('btn-start').onclick = hostStart;

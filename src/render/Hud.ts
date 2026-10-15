@@ -167,7 +167,7 @@ export class Hud {
     const pct = (v: number) => Math.round(v * 100);
     this.infoText.setText([
       ATTR_KEYS.map((k) => `${k === main ? '★' : ''}${ATTR_NAMES[k]} ${me.attrs[k]}`).join('   '),
-      `공격 ${me.stats.atk}  방어 ${me.stats.def}  치명 ${pct(me.stats.crit)}%  공속 +${pct(me.stats.haste)}%  스킬가속 +${pct(me.stats.cdr)}%`,
+      `공격 ${me.stats.atk}  방어 ${me.stats.def}  치명 ${pct(me.stats.crit)}%  회피 ${pct(me.stats.dodge)}%  공속 +${pct(me.stats.haste)}%  스킬가속 +${pct(me.stats.cdr)}%`,
       `MP ${Math.floor(me.mp)}/${me.stats.maxMp}  (초당 +${me.stats.mpRegen.toFixed(1)})`,
       `${me.gold} G`,
     ]);

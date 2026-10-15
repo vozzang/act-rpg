@@ -1,0 +1,7 @@
+Axe (axe_model.obj + axe_diffuse.png)
+
+License: Creative Commons Zero, CC0 1.0 Universal (public domain)
+https://creativecommons.org/publicdomain/zero/1.0/
+
+Converted to glTF (GLB) for this game: textured with axe_diffuse.png, origin at the grip
+(lower quarter of the handle), head pointing +Y, length 0.55.

@@ -32,6 +32,11 @@ export class Effects {
         this.floatText(p.x, p.y, String(e.v), e.toPlayer ? '#ff5050' : e.crit ? '#ffe040' : '#ffffff', e.crit ? 20 : 15);
         break;
       }
+      case 'dodge': {
+        const p = at(e.x, e.y);
+        this.floatText(p.x, p.y, '회피!', '#a0e8ff', 15, 600);
+        break;
+      }
       case 'heal': {
         const p = at(e.x, e.y);
         this.floatText(p.x, p.y, `+${e.v}`, '#60ff80', 15);
@@ -70,6 +75,7 @@ export class Effects {
         break;
       case 'swing':
         this.swingArc(e.x, e.y, e.aim, e.range, e.arc, e.enemy ? 0xff5040 : 0xffffff);
+        if (!e.enemy) w.fx.slash(e.x, e.y, e.aim, e.range, e.arc, 0xdff0ff); // 플레이어 근접 공격은 공중에 칼자국
         break;
       case 'levelup': {
         const pos = playerPos(e.pid);

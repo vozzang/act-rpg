@@ -10,6 +10,8 @@ export interface Session {
   myId: string;
   seed: number;
   players: LobbyPlayer[];
+  /** 이 플레이어가 로비에서 '스토리 건너뛰기'를 골랐는지 (스토리는 플레이어마다 따로 본다) */
+  skipStory: boolean;
   host?: HostNet;
   client?: ClientNet;
   /** 호스트/솔로가 '로비로' 버튼을 눌렀을 때 */

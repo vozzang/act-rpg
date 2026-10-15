@@ -1,7 +1,11 @@
 // 맵 편집기 (개발 서버에서 /editor.html). 위에서 내려다본 타일 격자에 지형을 칠하고 몬스터·상점·문·출발점·보스를 놓는다.
 // '저장'은 개발 서버를 통해 src/game/maps/world.json을 덮어쓰고, '테스트 플레이'는 저장하지 않은 맵으로 바로 게임을 연다.
-import { ELITES, ENEMIES, GATE_KEEPERS, ZONE_NAMES } from '../game/data';
-import { buildLevel } from '../game/level';
+import { ELITES, ENEMIES, GATE_KEEPERS, SHOP_TYPES, ZONE_NAMES, ZONE_PALETTE } from '../game/data';
+import { SHOP_ORDER, buildLevel } from '../game/level';
+import { PROPS, PROP_KINDS, type PropGroup, type PropKind } from '../game/props';
+
+/** 지도 위 상점 칸 글자: 회복 · 공격 · 방어 */
+const SHOP_LETTER = { heal: '회', attack: '공', defense: '방' } as const;
 import { mapFromLevel, stringifyMap, validateMap, zoneAt, type MapFile, type SpawnType } from '../game/mapfile';
 import { DRAFT_KEY } from '../game/world';
 import { View3D } from './view3d';
@@ -9,7 +13,7 @@ import { View3D } from './view3d';
 // ─── 도구 ─────────────────────────────────────────────
 
 type TerrainTool = 'grass' | 'road' | 'stone' | 'tree' | 'rock';
-type ObjectTool = 'select' | 'erase' | SpawnType | 'shop' | 'gate' | 'start' | 'boss';
+type ObjectTool = 'select' | 'erase' | SpawnType | 'shop' | 'gate' | 'start' | 'boss' | 'prop';
 type Tool = TerrainTool | ObjectTool;
 
 const TERRAIN: { id: TerrainTool; name: string; key: string; color: string }[] = [
@@ -54,14 +58,13 @@ const OBJECTS: { id: ObjectTool; name: string; key: string; color: string }[] = 
   { id: 'elite2', name: '중간보스 2', key: 'S', color: SPAWN_STYLE.elite2.color },
   { id: 'keeper', name: '문지기', key: 'D', color: SPAWN_STYLE.keeper.color },
   { id: 'gate', name: '문', key: 'G', color: '#d03030' },
-  { id: 'shop', name: '상점', key: 'F', color: '#ffcc33' },
+  { id: 'shop', name: '상점 (누르면 종류 바꿈)', key: 'F', color: '#ffcc33' },
+  { id: 'prop', name: '장식 (아래에서 고르기)', key: 'H', color: '#c8a070' },
   { id: 'start', name: '출발점', key: 'Z', color: '#40e0ff' },
   { id: 'boss', name: '흑룡', key: 'B', color: '#c01818' },
 ];
 
-// 화면 색 (게임의 3D 바닥 색과 맞춘다. 3구역은 설원)
-const GRASS = ['#5c9a44', '#8a9448', '#e4ebf2', '#8a7450', '#4a3c36'];
-const SNOW_ZONE = 3;
+
 
 // ─── 상태 ─────────────────────────────────────────────
 
@@ -73,7 +76,8 @@ let tool: Tool = 'select';
 let brush = 1;
 const view = { ox: -20, oy: -20, z: 9 }; // 화면 = 타일 * z - o
 let hover = { x: -1, y: -1, fx: 0, fy: 0 };
-type Picked = { kind: 'spawn' | 'shop' | 'start' | 'boss'; index: number } | { kind: 'gate'; index: number };
+type Picked = { kind: 'spawn' | 'shop' | 'start' | 'boss' | 'prop'; index: number } | { kind: 'gate'; index: number };
+let propKind: PropKind = 'barrel'; // 장식 도구로 놓을 종류
 let selected: Picked | null = null;
 let dragging: Picked | null = null;
 let painting = false;
@@ -194,7 +198,13 @@ function toast(msg: string) {
 // ─── 편집 동작 ─────────────────────────────────────────
 
 const inMap = (x: number, y: number) => x >= 0 && y >= 0 && x < map.w && y < map.h;
-const blocked = (x: number, y: number) => !inMap(x, y) || tiles[y][x] !== '.';
+const propAt = (x: number, y: number) => (map.props ?? []).findIndex((p) => p.x === x && p.y === y);
+/** 막힌 칸: 나무·바위, 또는 길을 막는 장식이 놓인 칸 */
+const blocked = (x: number, y: number) => {
+  if (!inMap(x, y) || tiles[y][x] !== '.') return true;
+  const i = propAt(x, y);
+  return i >= 0 && PROPS[map.props![i].t].block;
+};
 
 function paint(cx: number, cy: number) {
   const r = brush - 1;
@@ -205,6 +215,8 @@ function paint(cx: number, cy: number) {
         // 상점·문 칸은 칠하지 않는다
         if (map.shops.some((s) => s.x === x && s.y === y) || map.gates.some((g) => g.x === x && y >= g.y0 && y <= g.y1)) continue;
         tiles[y][x] = tool === 'tree' ? 'T' : 'R';
+        const pi = propAt(x, y); // 벽으로 칠한 칸의 장식은 치운다
+        if (pi >= 0) map.props!.splice(pi, 1);
       } else {
         tiles[y][x] = '.';
         ground[y][x] = tool === 'road' ? '=' : tool === 'stone' ? '#' : '.';
@@ -225,6 +237,8 @@ function pick(fx: number, fy: number): Picked | null {
   if (best >= 0) return { kind: 'spawn', index: best };
   const shop = map.shops.findIndex((s) => Math.floor(fx) === s.x && Math.floor(fy) === s.y);
   if (shop >= 0) return { kind: 'shop', index: shop };
+  const prop = propAt(Math.floor(fx), Math.floor(fy));
+  if (prop >= 0) return { kind: 'prop', index: prop };
   const gate = map.gates.findIndex((g) => Math.floor(fx) === g.x && fy >= g.y0 && fy < g.y1 + 1);
   if (gate >= 0) return { kind: 'gate', index: gate };
   return null;
@@ -234,6 +248,7 @@ function remove(p: Picked) {
   if (p.kind === 'spawn') map.spawns.splice(p.index, 1);
   else if (p.kind === 'shop') map.shops.splice(p.index, 1);
   else if (p.kind === 'gate') map.gates.splice(p.index, 1);
+  else if (p.kind === 'prop') map.props!.splice(p.index, 1);
   else return false; // 출발점·보스는 지울 수 없다 (옮기기만)
   selected = null;
   return true;
@@ -265,12 +280,28 @@ function place(x: number, y: number) {
     return;
   }
   if (tool === 'shop') {
-    const i = map.shops.findIndex((s) => s.x === x && s.y === y);
-    if (i >= 0) map.shops.splice(i, 1);
+    // 빈 칸: 회복 상점을 놓는다. 있는 상점을 누르면 종류가 회복 → 공격 → 방어로 바뀐다 (지우기는 오른쪽 클릭)
+    const sh = map.shops.find((s) => s.x === x && s.y === y);
+    if (sh) sh.type = SHOP_ORDER[(SHOP_ORDER.indexOf(sh.type ?? 'attack') + 1) % SHOP_ORDER.length];
     else {
       tiles[y][x] = '.';
-      map.shops.push({ x, y });
+      map.shops.push({ x, y, type: 'heal' });
     }
+    return;
+  }
+  if (tool === 'prop') {
+    // 빈 바닥 칸: 고른 장식을 놓는다. 이미 장식이 있으면 90도씩 돌린다 (지우기는 오른쪽 클릭)
+    map.props ??= [];
+    const i = propAt(x, y);
+    if (i >= 0) {
+      map.props[i].r = ((map.props[i].r ?? 0) + 1) % 4;
+      return;
+    }
+    if (tiles[y][x] !== '.' || map.shops.some((s) => s.x === x && s.y === y) || map.gates.some((g) => g.x === x && y >= g.y0 && y <= g.y1)) {
+      return toast('바닥 칸에만 장식을 놓을 수 있습니다');
+    }
+    if (PROPS[propKind].block && map.spawns.some((s) => s.x === x && s.y === y)) return toast('몬스터가 있는 칸에는 길을 막는 장식을 놓을 수 없습니다');
+    map.props.push({ t: propKind, x, y });
     return;
   }
   const t = tool as SpawnType;
@@ -296,16 +327,21 @@ function resize() {
   draw();
 }
 
+/** 칸 색: 구역 색(ZONE_PALETTE)을 쓰고, 나무는 어둡게, 바위는 벽 색을 밝게 해서 구분한다 */
 function tileColor(x: number, y: number) {
-  const zone = x >= map.arenaTx ? 0 : zoneAt(map.zoneStartsTx, x);
-  const snow = zone === SNOW_ZONE;
+  const pal = ZONE_PALETTE[Math.min(zoneAt(map.zoneStartsTx, x), ZONE_PALETTE.length) - 1];
+  const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
+  const mix = (c: number, to: number, k: number) => {
+    const ch = (s: number) => Math.round(((c >> s) & 255) * (1 - k) + ((to >> s) & 255) * k);
+    return (ch(16) << 16) | (ch(8) << 8) | ch(0);
+  };
   const t = tiles[y][x];
-  if (t === 'T') return snow ? '#6f9a8a' : '#2f5a2a';
-  if (t === 'R') return snow ? '#8a96a4' : '#5d5d63';
+  if (t === 'T') return hex(mix(pal.ground, 0x000000, 0.45));
+  if (t === 'R') return hex(mix(pal.wall, 0x9a9aa0, 0.45));
   const g = ground[y][x];
-  if (g === '=') return snow ? '#aebccb' : zone === 5 ? '#7a4630' : '#b59866';
+  if (g === '=') return hex(pal.road);
   if (g === '#') return '#9a9aa4';
-  return GRASS[(zone || map.zoneStartsTx.length) - 1];
+  return hex(pal.ground);
 }
 
 function draw() {
@@ -357,9 +393,26 @@ function draw() {
     ctx.strokeRect(sx(g.x) + z * 0.25, sy(g.y0), z * 0.5, (g.y1 - g.y0 + 1) * z);
   });
 
+  // 장식: 작은 네모 + 이름 첫 글자 (길을 막지 않는 장식은 테두리만)
+  (map.props ?? []).forEach((p, i) => {
+    const def = PROPS[p.t];
+    if (!def) return;
+    const x = sx(p.x), y = sy(p.y), sel = selected?.kind === 'prop' && selected.index === i;
+    const pad = z * 0.12;
+    ctx.fillStyle = def.color;
+    ctx.globalAlpha = def.block ? 1 : 0.55;
+    ctx.fillRect(x + pad, y + pad, z - pad * 2, z - pad * 2);
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = sel ? '#fff' : '#00000088';
+    ctx.lineWidth = sel ? 2 : 1;
+    ctx.strokeRect(x + pad, y + pad, z - pad * 2, z - pad * 2);
+    if (z >= 12) label(def.name[0], x + z / 2, y + z / 2, Math.max(8, z * 0.5), '#111');
+  });
+
   // 상점
   map.shops.forEach((s, i) => {
-    box(sx(s.x), sy(s.y), z, '#ffcc33', '$', selected?.kind === 'shop' && selected.index === i);
+    const type = s.type ?? 'attack';
+    box(sx(s.x), sy(s.y), z, `#${SHOP_TYPES[type].color.toString(16).padStart(6, '0')}`, SHOP_LETTER[type], selected?.kind === 'shop' && selected.index === i);
   });
 
   // 몬스터
@@ -455,7 +508,12 @@ function describe(p: Picked | null): string {
     if (s.t === 'elite1' || s.t === 'elite2') return `${ELITES[zone - 1][s.t === 'elite1' ? 0 : 1].name} (${zone}구역 중간보스)`;
     return SPAWN_STYLE[s.t].name;
   }
-  return { shop: '상점', gate: '문', start: '출발점', boss: '흑룡' }[p.kind];
+  if (p.kind === 'shop') return SHOP_TYPES[map.shops[p.index].type ?? 'attack'].name;
+  if (p.kind === 'prop') {
+    const pr = map.props![p.index];
+    return `장식: ${PROPS[pr.t].name}${PROPS[pr.t].block ? ' (길 막음)' : ''}`;
+  }
+  return { gate: '문', start: '출발점', boss: '흑룡' }[p.kind];
 }
 
 cv.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -518,6 +576,7 @@ window.addEventListener('mousemove', (e) => {
     const d = dragging;
     if (d.kind === 'spawn') Object.assign(map.spawns[d.index], { x: t.x, y: t.y });
     else if (d.kind === 'shop') Object.assign(map.shops[d.index], { x: t.x, y: t.y });
+    else if (d.kind === 'prop' && propAt(t.x, t.y) < 0) Object.assign(map.props![d.index], { x: t.x, y: t.y });
     else if (d.kind === 'start' || d.kind === 'boss') map[d.kind] = { x: t.x, y: t.y };
     changed();
   } else draw();
@@ -655,7 +714,37 @@ function toolButtons(el: HTMLElement, defs: { id: Tool; name: string; key: strin
 function setTool(t: Tool) {
   tool = t;
   document.querySelectorAll<HTMLButtonElement>('[data-tool]').forEach((b) => b.classList.toggle('on', b.dataset.tool === t));
+  document.querySelectorAll<HTMLButtonElement>('[data-prop]').forEach((b) => b.classList.toggle('on', t === 'prop' && b.dataset.prop === propKind));
   draw();
+}
+
+/** 장식 고르는 목록: 묶음(자연·야영지·물자·구조물·설원)마다 버튼. 길을 막지 않는 장식은 '통과'로 표시 */
+function propButtons(el: HTMLElement) {
+  const groups = new Map<PropGroup, PropKind[]>();
+  for (const k of PROP_KINDS) {
+    const g = PROPS[k].group;
+    if (!groups.has(g)) groups.set(g, []);
+    groups.get(g)!.push(k);
+  }
+  for (const [g, kinds] of groups) {
+    const head = document.createElement('div');
+    head.className = 'group';
+    head.textContent = g;
+    const box = document.createElement('div');
+    box.className = 'tools';
+    for (const k of kinds) {
+      const d = PROPS[k];
+      const b = document.createElement('button');
+      b.dataset.prop = k;
+      b.innerHTML = `<span class="sw" style="background:${d.color}"></span>${d.name}${d.block ? '' : '<span class="pass">통과</span>'}`;
+      b.onclick = () => {
+        propKind = k;
+        setTool('prop');
+      };
+      box.appendChild(b);
+    }
+    el.append(head, box);
+  }
 }
 
 function setBrush(n: number) {
@@ -667,6 +756,7 @@ function setBrush(n: number) {
 
 toolButtons($('terrain-tools'), TERRAIN);
 toolButtons($('object-tools'), OBJECTS);
+propButtons($('prop-list'));
 $<HTMLInputElement>('brush').oninput = (e) => setBrush(Number((e.target as HTMLInputElement).value));
 $('save').onclick = save;
 $('undo').onclick = undo;

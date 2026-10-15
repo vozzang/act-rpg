@@ -1,7 +1,7 @@
 // 미니맵(오른쪽 아래)과 전체 지도(Tab 누르고 있기 / M 켜고 끄기).
 // 3D 카메라와 같은 방향(북쪽이 위, 맵 진행 방향이 오른쪽)으로 위에서 내려다본 모습이다.
 import Phaser from 'phaser';
-import { CLASSES, ENEMIES, TILE, VIEW_H, VIEW_W, ZONE_NAMES } from '../game/data';
+import { CLASSES, ENEMIES, SHOP_TYPES, TILE, VIEW_H, VIEW_W, ZONE_NAMES, ZONE_PALETTE } from '../game/data';
 import { G_ROAD, G_STONE, T_FLOOR, T_GATE, zoneOfTx, type Level } from '../game/level';
 import type { Snapshot } from '../game/types';
 import { hex, makeText } from './ui';
@@ -26,10 +26,10 @@ export class MapView {
       for (let tx = 0; tx < w; tx++) {
         const t = tiles[ty * w + tx];
         const gr = ground[ty * w + tx];
-        const zone = tx < level.arenaTx ? zoneOfTx(level, tx) : 0;
-        const snow = zone === 3, volcano = zone === 5; // 3구역 설원은 하얗게, 5구역 화산은 검붉게
-        const color = t !== T_FLOOR && t !== T_GATE ? (snow ? 0x6a7680 : volcano ? 0x2a1c18 : 0x24301e)
-          : gr === G_ROAD ? (snow ? 0xa8b4c0 : volcano ? 0x9a5a3a : 0xb8a070) : gr === G_STONE ? 0x8a8a90 : snow ? 0xdde4ea : volcano ? 0x5a4640 : 0x5a7a48;
+        // 구역별 색 (ZONE_PALETTE). 미니맵은 3D보다 조금 어둡게
+        const pal = ZONE_PALETTE[zoneOfTx(level, tx) - 1];
+        const shade = (c: number, k: number) => new Phaser.Display.Color((c >> 16) & 255, (c >> 8) & 255, c & 255).darken(k).color;
+        const color = t !== T_FLOOR && t !== T_GATE ? pal.wall : gr === G_ROAD ? pal.road : gr === G_STONE ? 0x8a8a90 : shade(pal.ground, 12);
         g.fillStyle(color, 1).fillRect(tx * SCALE, ty * SCALE, SCALE, SCALE);
       }
     g.generateTexture('minimap', Math.ceil(w * SCALE), Math.ceil(h * SCALE));
@@ -89,12 +89,12 @@ export class MapView {
   /** 플레이어 위치와 보스 방 표시. big이면 전체 지도용으로 크게 그린다. */
   private drawMarkers(g: Phaser.GameObjects.Graphics, img: Phaser.GameObjects.Image, s: Snapshot, big: boolean) {
     const t = this.scene.time.now / 1000;
-    // 상점: 노란 동전 모양
+    // 상점: 종류별 색 점 (회복 초록 · 공격 빨강 · 방어 파랑)
     for (const sh of this.level.shops) {
       const m = this.pos(img, sh.x, sh.y);
-      const r = big ? 6 : 3;
+      const r = big ? 5 : 2.5;
       g.fillStyle(0x000000, 1).fillCircle(m.x, m.y, r + 1.5);
-      g.fillStyle(0xffcc33, 1).fillCircle(m.x, m.y, r);
+      g.fillStyle(SHOP_TYPES[sh.type].color, 1).fillCircle(m.x, m.y, r);
     }
     // 닫힌 문: 빨간 막대 (문지기를 쓰러뜨리면 사라진다)
     this.level.gates.forEach((gate, i) => {

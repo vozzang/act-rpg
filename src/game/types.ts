@@ -42,6 +42,7 @@ export interface Stats {
   def: number;
   crit: number; // 0~1
   haste: number; // 공격 속도 증가 (0.1 = 10% 빠름)
+  dodge: number; // 적의 공격을 피할 확률 (0~1, 민첩에서 나온다)
   cdr: number; // 스킬 재사용 가속 (0.1 = 10% 빨리 돌아옴)
   maxMp: number;
   mpRegen: number; // 초당 MP 회복
@@ -170,11 +171,18 @@ export interface ShopEntry {
   kind: 'hpFood' | 'mpFood' | 'item';
   price: number;
   item?: Item;
+  /** 화면용: 보는 플레이어가 이미 산 장비인지 (장비는 플레이어마다 하나씩 살 수 있다) */
   sold: boolean;
+  /** 호스트 전용: 이 장비를 산 플레이어 id (스냅샷에는 보내지 않는다) */
+  buyers?: string[];
 }
+
+/** 상점 종류: 회복(음식), 공격(무기·공격 장신구), 방어(갑옷·방어 장신구) */
+export type ShopType = 'heal' | 'attack' | 'defense';
 
 export interface Shop {
   id: number;
+  type: ShopType;
   x: number; // 상인이 서 있는 곳 (월드 좌표)
   y: number;
   zone: number;
@@ -186,6 +194,11 @@ export type BoomKind = 'orb' | 'fireball' | 'meteor' | 'rain' | 'slam' | 'bossSl
 
 export type GameEvent =
   | { t: 'dmg'; x: number; y: number; v: number; crit: boolean; toPlayer: boolean }
+  | { t: 'dodge'; x: number; y: number } // 플레이어가 적의 공격을 피했다
+  // 소리용 이벤트 (화면 효과는 없다)
+  | { t: 'kill'; x: number; y: number; kind: EnemyKind; elite: boolean } // 적이 쓰러졌다
+  | { t: 'shoot'; x: number; y: number; kind: Projectile['kind']; enemy: boolean } // 투사체를 쐈다 (기본 공격·적의 원거리 공격)
+  | { t: 'gate'; x: number; y: number } // 문이 열렸다
   | { t: 'heal'; x: number; y: number; v: number }
   | { t: 'boom'; x: number; y: number; r: number; shake?: boolean; kind?: BoomKind }
   | { t: 'levelup'; pid: string; level: number }
@@ -193,7 +206,7 @@ export type GameEvent =
   | { t: 'down'; pid: string }
   | { t: 'revive'; pid: string }
   | { t: 'banner'; text: string; sub?: string }
-  | { t: 'skill'; pid: string; idx: number; x: number; y: number; r: number; aim: number }
+  | { t: 'skill'; pid: string; cls: ClassId; idx: number; x: number; y: number; r: number; aim: number }
   | { t: 'unlock'; pid: string; idx: number }
   | { t: 'nomp'; pid: string }
   | { t: 'mana'; x: number; y: number; v: number }

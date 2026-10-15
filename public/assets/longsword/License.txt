@@ -1,0 +1,11 @@
+"Long Sword" by WeaponGuy (longsword1.blend, 2008)
+
+License: Creative Commons Attribution 3.0 (CC BY 3.0)
+https://creativecommons.org/licenses/by/3.0/
+
+Author: WeaponGuy
+Source: https://opengameart.org/content/long-sword ("Long Sword" on OpenGameArt)
+
+Changes (required to be indicated under CC BY): converted to glTF (GLB) for this game;
+split into blade / grip / guard materials with new flat colors (original textures not used),
+origin moved to the grip center, scaled to length 0.6, cross-section widened 1.7x.

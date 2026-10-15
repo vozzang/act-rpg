@@ -18,6 +18,9 @@
     .tools button:hover, .btn:hover { border-color: var(--accent); }
     .tools button.on { background: var(--accent); color: #0b1220; border-color: var(--accent); font-weight: 700; }
     .tools .key { margin-left: auto; font-size: 10px; opacity: 0.6; }
+    #prop-list .group { font-size: 11px; color: var(--muted); margin: 8px 0 3px; }
+    #prop-list .tools button { font-size: 12px; padding: 4px 6px; }
+    #prop-list .tools button .pass { margin-left: auto; font-size: 10px; opacity: 0.6; }
     .sw { width: 12px; height: 12px; border-radius: 3px; flex: none; border: 1px solid #0006; }
     .row { display: flex; gap: 4px; margin-top: 4px; }
     .row > * { flex: 1; }
@@ -49,6 +52,9 @@
       <h2>배치</h2>
       <div class="tools" id="object-tools"></div>
 
+      <h2>장식 (H) — 누르면 놓기, 다시 누르면 회전</h2>
+      <div id="prop-list"></div>
+
       <h2>보기</h2>
       <div class="row"><button class="btn primary" id="view3d">3D로 보기 (Tab)</button></div>
       <div class="help">편집 중인 맵을 게임과 같은 3D 화면으로 둘러봅니다. 2D에서 더블클릭하면 그 자리를 봅니다.</div>
@@ -73,6 +79,7 @@
         Ctrl(⌘)+휠·트랙패드 집기·+/-: 확대·축소<br />
         빈 곳을 끌기(선택 도구) · Space+끌기 · 가운데 버튼: 화면 이동<br />
         Ctrl+Z / Ctrl+Shift+Z: 되돌리기 / 다시 하기<br />
+        상점: 빈 칸을 누르면 회복 상점, 있는 상점을 누르면 회복 → 공격 → 방어로 바뀝니다.<br />
         문: 열려 있는 세로 통로를 누르면 그 통로를 막는 문이 생깁니다 (다시 누르면 없앰). 구역마다 출구 문 1개, 문지기 1명 이상이 필요합니다.<br />
         구역 경계(노란 선)와 맵 크기는 지금은 고정입니다.
       </div>

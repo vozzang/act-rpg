@@ -63,6 +63,8 @@
     @media (orientation: portrait) and (pointer: coarse) {
       body.playing #rotate { display: flex; }
     }
+    label.check { display: flex; align-items: center; gap: 8px; color: var(--text); font-size: 14px; cursor: pointer; flex-wrap: wrap; }
+    label.check input { width: 18px; height: 18px; margin: 0; }
     .touch-only { display: none; }
     @media (pointer: coarse) { .touch-only { display: inline-block; } .kbm-only { display: none; } }
     /* 가로로 든 휴대폰처럼 낮은 화면에서는 여백을 줄인다 */
@@ -89,6 +91,8 @@
         <label for="name">닉네임</label>
         <input id="name" maxlength="10" placeholder="모험가" />
       </div>
+      <label class="check">효과음 크기 <input type="range" id="volume" min="0" max="100" step="5" style="width:160px;height:auto" /> <span id="volume-v" class="hint" style="margin:0"></span></label>
+      <label class="check"><input type="checkbox" id="skip-story" /> 스토리 건너뛰기 <span class="hint" style="margin:0">(인트로·구역 이야기·엔딩을 보지 않는다. 게임 중에도 건너뛸 수 있다)</span></label>
       <div class="row">
         <button id="btn-create" class="primary">방 만들기</button>
         <button id="btn-solo">혼자 하기</button>

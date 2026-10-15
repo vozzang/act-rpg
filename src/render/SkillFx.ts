@@ -515,6 +515,36 @@ export class SkillFx {
     }
   }
 
+  /**
+   * 근접 공격의 칼자국: 가슴 높이에서 부채꼴 모양 빛 띠가 한쪽에서 반대쪽으로 빠르게 그어지며 사라진다.
+   * (x, y)는 공격한 캐릭터, aim은 바라보는 방향, range·arc는 게임 판정과 같은 부채꼴 (월드 px, 라디안)
+   */
+  slash(wx: number, wy: number, aim: number, range: number, arc: number, color: number) {
+    const x = wx * U, z = wy * U, r = range * U;
+    const full = arc >= Math.PI; // 회오리처럼 한 바퀴
+    const span = full ? Math.PI * 2 : arc * 2;
+    const mat = new THREE.MeshBasicMaterial({ color, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false });
+    const pivot = new THREE.Group();
+    pivot.position.set(x, 0.45, z);
+    // 화면 x·z(월드 x·y)에서 aim 방향. 링은 XY 평면이라 눕힌 뒤, 시작 각이 aim - arc가 되게 돌린다
+    pivot.rotation.y = -aim;
+    pivot.rotation.z = 0.25; // 살짝 비스듬히 그어지게
+    this.scene.add(pivot);
+    let mesh: THREE.Mesh | null = null;
+    this.add(pivot, 0.22, (k, age) => {
+      const t = Math.min(1, age / 0.1); // 0.1초 동안 그어진다
+      if (mesh) {
+        pivot.remove(mesh);
+        mesh.geometry.dispose();
+      }
+      const len = Math.max(0.01, span * t);
+      const g = new THREE.RingGeometry(r * 0.72, r * 0.95, 24, 1, -span / 2, len).rotateX(-Math.PI / 2);
+      mesh = new THREE.Mesh(g, mat);
+      pivot.add(mesh);
+      mat.opacity = 0.55 * Math.min(1, k * 1.8);
+    }, [mat]);
+  }
+
   /** 폭발·충격 */
   boom(wx: number, wy: number, wr: number, kind: BoomKind | undefined) {
     const x = wx * U, z = wy * U, r = Math.max(0.3, wr * U);
