@@ -16,8 +16,17 @@ const ROW_H = 26;
 const ROWS = 12; // 상자 6 + 가방 6
 const DEPTH = 140;
 
-export type ForgePick = { from: 'inv' | 'bag'; idx: number };
-type Entry = { item: Item; pick: ForgePick };
+/** 조합 재료 하나: 어디(아이템 상자·가방)의 몇 번째 칸인지 */
+export type ForgePick = {
+  from: 'inv' | 'bag'; // 아이템 상자 · 가방
+  idx: number; // 칸 번호
+};
+
+/** 창 목록의 한 줄: 장비와 그 장비가 있는 칸 */
+type Entry = {
+  item: Item;
+  pick: ForgePick;
+};
 
 export class ForgePanel {
   /** 열려 있는 대장간 id (닫혀 있으면 null) */

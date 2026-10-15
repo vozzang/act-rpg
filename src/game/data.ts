@@ -27,48 +27,57 @@ export const ZONE_PALETTE: { ground: number; road: number; wall: number }[] = [
 
 // ─── 직업 ────────────────────────────────────────────
 
+/** 직업의 기본 공격: 근접(부채꼴 베기) 또는 투사체(화살·마법 구체) */
 export type AttackDef =
   | {
-      kind: 'melee'; cd: number; mult: number;
+      kind: 'melee';
+      cd: number; // 공격 간격(초)
+      mult: number; // 공격력 배율
       range: number; // 몸 중심에서 닿는 거리
       arc: number; // 조준 방향 기준 좌우 각도(라디안)
-      knock: number;
+      knock: number; // 맞은 적을 밀어내는 세기
     }
   | {
-      kind: 'projectile'; cd: number; mult: number; speed: number; proj: 'arrow' | 'orb';
+      kind: 'projectile';
+      cd: number; // 공격 간격(초)
+      mult: number; // 공격력 배율
+      speed: number; // 날아가는 속도 (px/초)
+      proj: 'arrow' | 'orb'; // 투사체 모양
       range: number; // 최대 비행 거리
       aoe: number; // 0보다 크면 터지면서 범위 피해
       arcHeight: number; // 포물선 최고 높이 (보이는 효과)
     };
 
+/** 스킬 하나의 이름·비용 (세부 수치는 SKILL) */
 export interface SkillDef {
-  name: string;
+  name: string; // 스킬 이름
   cd: number; // 재사용 대기시간(초)
   mp: number; // 소모 MP. 위력이 클수록 많이 든다
   unlock: number; // 배우는 레벨
-  desc: string;
+  desc: string; // 설명 (스킬 바 툴팁·로비 카드)
 }
 
 /** 스킬을 배우는 레벨. 마지막이 최종 스킬. */
 export const SKILL_UNLOCKS = [1, 4, 7, 10];
 
+/** 직업 하나의 모든 설정 */
 export interface ClassDef {
-  name: string;
-  race: string;
-  color: number;
+  name: string; // 직업 이름 (검사·수호자·궁수·마법사)
+  race: string; // 종족 (휴먼·드워프·엘프·노움)
+  color: number; // 파티 패널·지도 점 색
   r: number; // 충돌 반지름
   height: number; // 키 (머리 위 이름표 위치 기준, 월드 px)
-  speed: number;
+  speed: number; // 이동 속도 (px/초)
   aggro: number; // 적이 이 직업을 노릴 때 거리 배율. 작을수록 더 잘 노려진다.
   mainAttr: AttrKey; // 주 능력치 (★ 표시, 레벨업마다 많이 오른다)
   atkAttr?: AttrKey; // 공격력이 오르는 능력치 (없으면 주 능력치). 수호자는 주 능력치가 체력이지만 공격은 힘으로 오른다
   attrs: Attrs; // 1레벨 능력치
   attrGrowth: Attrs; // 레벨업마다 자동으로 오르는 능력치
   bonus: { hp: number; atk: number; def: number; crit: number; mp: number; mpLv: number; mpRegen: number }; // 능력치와 별개인 직업 기본값
-  attack: AttackDef;
+  attack: AttackDef; // 기본 공격
   skills: SkillDef[]; // 4개, SKILL_UNLOCKS 레벨에 하나씩 배운다
-  weaponNoun: string;
-  desc: string;
+  weaponNoun: string; // 무기 이름 (이름이 없는 옛 장비를 보여줄 때만 쓴다)
+  desc: string; // 로비 카드 설명
 }
 
 export const CLASSES: Record<ClassId, ClassDef> = {
@@ -240,20 +249,21 @@ export function xpForLevel(level: number): number {
  */
 export type EnemyAI = 'hop' | 'melee' | 'ranged' | 'heavy' | 'dash' | 'frost' | 'bomb' | 'boss';
 
+/** 몬스터 한 종류의 능력치·행동 (1구역 기준. 구역 배율 zoneScale과 인원수 배율이 곱해진다) */
 export interface EnemyDef {
-  name: string;
-  ai: EnemyAI;
+  name: string; // 이름
+  ai: EnemyAI; // 행동 방식
   heavy?: boolean; // 묵직한 적: 맞아도 잠깐만 멈칫하고, 내려치기 준비(windup)는 기절시켜야만 끊긴다
   knock?: number; // 넉백을 받는 비율 (기본 1, 작을수록 덜 밀린다)
   r: number; // 충돌 반지름. 길찾기가 타일 단위라 보스 외에는 지름이 한 칸(32)보다 작아야 좁은 틈을 지나간다.
   height: number; // 키 (머리 위 체력바 위치 기준, 월드 px)
-  hp: number;
-  atk: number;
-  def: number;
-  speed: number;
-  xp: number;
+  hp: number; // 체력
+  atk: number; // 공격력
+  def: number; // 방어
+  speed: number; // 이동 속도 (px/초)
+  xp: number; // 쓰러뜨리면 주는 경험치
   gold: number; // 떨어뜨리는 돈 (구역이 깊을수록 늘어난다)
-  dropRate: number;
+  dropRate: number; // 장비를 떨어뜨릴 확률 (여기에 ITEM_DROP_MULT를 곱한다)
 }
 
 // 몬스터가 많은 대신 마리당 경험치·돈·장비 드랍은 낮게 잡았다 (한 판 동안 얻는 총량이 너무 커지지 않도록)
@@ -298,8 +308,11 @@ export const SHOP = {
   foodPrice: 20,
   itemPrice: { common: 25, rare: 55, epic: 110, legendary: 240 } as Record<Rarity, number>,
   // 상점 장비는 필드 드랍보다 좋은 등급이 잘 나온다
-  rarityWeight: { common: 30, rare: 45, epic: 20, legendary: 5 } as Record<Rarity, number>,
+  rarityWeight: { common: 30, rare: 47, epic: 21, legendary: 2 } as Record<Rarity, number>, // 중간보스·문지기 확정 드랍의 등급 확률
 };
+
+/** 일반 몬스터의 장비 드랍 확률(ENEMIES의 dropRate)에 곱하는 값. 전체 드랍량을 한 번에 조절한다 */
+export const ITEM_DROP_MULT = 0.6;
 
 /** 상점 종류별 이름과 표시 색 */
 export const SHOP_TYPES: Record<ShopType, { name: string; color: number }> = {
@@ -316,15 +329,15 @@ export const FORGE = { min: 2, max: 3, feePerZone: 15 };
 
 /** 조합법 재료: noun으로 장비 이름(대검·반지 등)을, slot으로 종류(무기·방어구·장신구)를 맞춘다 */
 export interface RecipeNeed {
-  noun?: string;
-  slot?: Slot;
+  noun?: string; // 장비 종류 이름이 이것이어야 한다 (예: '대검')
+  slot?: Slot; // 장비 종류가 이것이어야 한다 (예: 아무 무기)
 }
 
 /** 조합법: 재료가 정확히 맞으면 정해진 고유 장비가 나온다 (items.ts의 `${key}${단계}` — 재료 중 가장 깊은 단계) */
 export interface Recipe {
   key: string; // 결과 장비 키 (단계 숫자 없이)
   title: string; // 만들어지는 장비 이름
-  needs: RecipeNeed[];
+  needs: RecipeNeed[]; // 재료 (개수와 종류가 정확히 맞아야 한다)
 }
 
 export const RECIPES: Recipe[] = [
@@ -405,12 +418,13 @@ export const AGGRO_RANGE = 420;
 
 // ─── 중간보스 ─────────────────────────────────────────
 
+/** 중간보스·문지기 하나 */
 export interface EliteDef {
   kind: Exclude<EnemyKind, 'boss'>; // 움직임·공격 방식과 모델은 이 몬스터를 따른다
-  name: string;
+  name: string; // 이름 (머리 위·배너에 보인다)
   hp: number; // 1구역 기준 능력치. 여기에 구역 보정(zoneScale)과 인원수 보정이 곱해진다
-  atk: number;
-  def: number;
+  atk: number; // 공격력
+  def: number; // 방어
 }
 
 /**
@@ -472,11 +486,12 @@ export function partyHpScale(players: number) {
 
 // ─── 장비 ────────────────────────────────────────────
 
+/** 장비 등급별 이름 · 글자 색 · 수치 배율(목록의 처음 수치를 만들 때 쓴 값) · 몬스터 드랍 등급 확률 가중치 */
 export const RARITY: Record<Rarity, { name: string; color: string; mult: number; weight: number }> = {
   common: { name: '일반', color: '#d8d8d8', mult: 1, weight: 60 },
   rare: { name: '희귀', color: '#4aa3ff', mult: 1.6, weight: 28 },
   epic: { name: '영웅', color: '#c061ff', mult: 2.4, weight: 10 },
-  legendary: { name: '전설', color: '#ffa020', mult: 3.6, weight: 2 },
+  legendary: { name: '전설', color: '#ffa020', mult: 3.6, weight: 0.5 }, // 몬스터 드랍에서 약 0.5%
 };
 
 export function rollRarity(rng: () => number, weights: Record<Rarity, number> = DROP_WEIGHTS): Rarity {

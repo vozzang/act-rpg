@@ -43,6 +43,13 @@ export default defineConfig({
     // 큰 라이브러리는 따로 나눠서 게임 코드만 바뀌었을 때 브라우저 캐시를 재사용한다.
     chunkSizeWarningLimit: 1500, // phaser 단독 청크가 약 1.2MB
     rollupOptions: {
+      // 게임 화면과 정보 페이지(직업 능력치·몬스터 도감·아이템 도감)를 함께 만든다. 맵 편집기(editor.html)는 개발 서버 전용이라 넣지 않는다
+      input: {
+        main: resolve(__dirname, 'index.html'),
+        classes: resolve(__dirname, 'classes.html'),
+        monsters: resolve(__dirname, 'monsters.html'),
+        items: resolve(__dirname, 'items.html'),
+      },
       output: {
         manualChunks: {
           phaser: ['phaser'],

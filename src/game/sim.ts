@@ -1,6 +1,6 @@
 // 게임 시뮬레이션. 호스트에서만 실행되고, 클라이언트는 스냅샷을 받아 그리기만 한다.
 import {
-  AGGRO_RANGE, BAG_SIZE, FORGE, TICK_RATE, ATTR_EFFECT, ATTR_KEYS, CLASSES, ELITE, ELITES, ENEMIES, GATE_KEEPERS, FOOD, INV_SIZE, POINTS_PER_LEVEL, REVIVE_TIME, SHOP, SKILL, TILE, ZONE_NAMES,
+  AGGRO_RANGE, BAG_SIZE, FORGE, ITEM_DROP_MULT, TICK_RATE, ATTR_EFFECT, ATTR_KEYS, CLASSES, ELITE, ELITES, ENEMIES, GATE_KEEPERS, FOOD, INV_SIZE, POINTS_PER_LEVEL, REVIVE_TIME, SHOP, SKILL, TILE, ZONE_NAMES,
   deriveStats, makeItem, partyHpScale, type EliteDef, shopStock, matchRecipe, recipeItem, randomForgeRarity, totalAttrs, xpForLevel, zoneScale, type AttackDef,
 } from './data';
 import { mulberry32, openGate, zoneOfTx, type Level } from './level';
@@ -12,6 +12,7 @@ import {
   type LobbyPlayer, type Player, type Projectile, type Shop, type Snapshot,
 } from './types';
 
+/** 투사체를 쏘는 기본 공격 설정 (궁수·마법사) */
 type ProjectileAttack = Extract<AttackDef, { kind: 'projectile' }>;
 
 const NAV_EVERY = 15; // 길찾기 지도 갱신 주기 (틱)
@@ -964,7 +965,7 @@ export class Sim {
       this.spawnDrop({ kind: this.rng() < 0.5 ? 'hpFood' : 'mpFood' }, e.x, e.y);
       return;
     }
-    if (this.rng() < ENEMIES[e.kind].dropRate) {
+    if (this.rng() < ENEMIES[e.kind].dropRate * ITEM_DROP_MULT) {
       this.spawnDrop({ kind: 'item', item: makeItem(this.nextId++, e.zone, this.rng) }, e.x, e.y);
     } else if (this.rng() < 0.1) {
       this.spawnDrop({ kind: this.rng() < 0.5 ? 'hpFood' : 'mpFood' }, e.x, e.y);

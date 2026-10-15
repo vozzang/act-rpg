@@ -218,7 +218,14 @@ function makeTextures() {
 
 // ─── 효과 하나 ─────────────────────────────────────────
 
-type Fx = { obj: THREE.Object3D; age: number; life: number; tick: (k: number, age: number, dt: number) => void; materials: THREE.Material[] };
+/** 진행 중인 효과 하나 (바닥 무늬·고리·빛기둥·돌 조각 등) */
+type Fx = {
+  obj: THREE.Object3D; // 장면에 놓인 물체
+  age: number; // 생긴 뒤 지난 시간(초)
+  life: number; // 사라지는 시간(초)
+  tick: (k: number, age: number, dt: number) => void; // 매 프레임 모양 바꾸기 (k: 남은 비율 1 → 0)
+  materials: THREE.Material[]; // 끝나면 정리할 재질
+};
 
 export class SkillFx {
   private glow = new Particles(2500, true);
@@ -543,6 +550,23 @@ export class SkillFx {
       pivot.add(mesh);
       mat.opacity = 0.55 * Math.min(1, k * 1.8);
     }, [mat]);
+  }
+
+  /** 치명타가 들어간 자리: 노란 불꽃이 튀고 작은 고리가 퍼진다 */
+  critSpark(wx: number, wy: number) {
+    const x = wx * U, z = wy * U;
+    this.burst(x, 0.5, z, 14, 3.5, 0xffd040, 0.18, 0.35);
+    this.ring(x, z, 0.2, 1.4, 0xffc040, 0.25, 0.5);
+  }
+
+  /** 회피: 몸 주위에 하늘색 바람이 휙 돈다 */
+  dodgeWisp(wx: number, wy: number) {
+    const x = wx * U, z = wy * U;
+    for (let i = 0; i < 14; i++) {
+      const a = (i / 14) * Math.PI * 2;
+      this.glow.emit(x + Math.cos(a) * 0.35, 0.3 + (i % 3) * 0.15, z + Math.sin(a) * 0.35, -Math.sin(a) * 3, 0.4, Math.cos(a) * 3, 0.3, 0xa0f0ff, 0.14);
+    }
+    this.ring(x, z, 0.3, 1.2, 0x90e8ff, 0.3);
   }
 
   /** 폭발·충격 */

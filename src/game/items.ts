@@ -4,17 +4,19 @@
 // (처음 수치는 기존 공식에서 운을 뺀 값으로 만들었다: 무기 공격 = (3 + 4z)·등급배율, 등급배율 일반 1 · 희귀 1.6 · 영웅 2.4 · 전설 3.6)
 import type { ItemStats, Rarity, Slot } from './types';
 
+/** 장비를 얻는 곳: 몬스터 드랍 · 상점 · 대장간 조합법 */
 export type ItemSource = 'drop' | 'shop' | 'recipe';
 
+/** 장비 하나의 정의 */
 export interface ItemDef {
-  key: string;
-  name: string;
-  base: string;
-  slot: Slot;
-  rarity: Rarity;
-  tier: number;
-  from: ItemSource[];
-  stats: ItemStats;
+  key: string; // 고유 키 (종류 영문 키 + 단계 숫자, 예: 'greatsword2')
+  name: string; // 화면에 보이는 이름 (예: '강철 대검')
+  base: string; // 종류 이름 (예: '대검'). 대장간 조합법 재료를 맞출 때 쓴다
+  slot: Slot; // 무기 · 방어구 · 장신구
+  rarity: Rarity; // 등급
+  tier: number; // 단계 1~5 (이 단계 구역의 몬스터·상점에서 나온다)
+  from: ItemSource[]; // 얻는 곳
+  stats: ItemStats; // 수치
 }
 
 export const ITEM_LIST: ItemDef[] = [

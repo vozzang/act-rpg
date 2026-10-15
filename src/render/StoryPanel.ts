@@ -10,7 +10,12 @@ const DEPTH = 190;
 const BOX = { x: 60, y: VIEW_H - 232, w: VIEW_W - 120, h: 120 }; // 아래쪽 스킬 바·아이템 상자를 가리지 않는 높이
 const CHARS_PER_SEC = 45;
 
-type Queued = { scene: StoryScene; full: boolean; onDone?: () => void };
+/** 보여 줄 차례를 기다리는 장면 */
+type Queued = {
+  scene: StoryScene; // 장면
+  full: boolean; // 화면 전체를 어둡게 할지 (인트로·엔딩)
+  onDone?: () => void; // 다 보거나 건너뛰면 부를 함수
+};
 
 export class StoryPanel {
   private queue: Queued[] = [];

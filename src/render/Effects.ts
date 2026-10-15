@@ -29,12 +29,19 @@ export class Effects {
     switch (e.t) {
       case 'dmg': {
         const p = at(e.x, e.y);
-        this.floatText(p.x, p.y, String(e.v), e.toPlayer ? '#ff5050' : e.crit ? '#ffe040' : '#ffffff', e.crit ? 20 : 15);
+        if (e.crit && !e.toPlayer) {
+          // 치명타: 큰 주황 숫자가 튀어나오고 위에 '치명타!', 맞은 자리에 불꽃
+          this.popText(p.x, p.y - 4, String(e.v), '#ffb020', 26, 900);
+          this.popText(p.x, p.y - 30, '치명타!', '#ffe060', 15, 800);
+          w.fx.critSpark(e.x, e.y);
+        } else this.floatText(p.x, p.y, String(e.v), e.toPlayer ? '#ff5050' : '#ffffff', 15);
         break;
       }
       case 'dodge': {
-        const p = at(e.x, e.y);
-        this.floatText(p.x, p.y, '회피!', '#a0e8ff', 15, 600);
+        // 회피: 하늘색 '회피!'가 튀어나오고 몸 주위에 바람 고리
+        const p = at(e.x, e.y, 60);
+        this.popText(p.x, p.y, '회피!', '#80e8ff', 20, 800);
+        w.fx.dodgeWisp(e.x, e.y);
         break;
       }
       case 'forged': {
@@ -145,6 +152,13 @@ export class Effects {
     const g = this.scene.add.graphics().setDepth(DEPTH_GROUND);
     g.fillStyle(color, 0.28).fillPoints(pts, true);
     this.scene.tweens.add({ targets: g, alpha: 0, duration: 160, onComplete: () => g.destroy() });
+  }
+
+  /** 튀어나오는 글자: 크게 시작해 제 크기로 줄어든 뒤 떠오르며 사라진다 (치명타·회피처럼 눈에 띄어야 하는 것) */
+  popText(x: number, y: number, str: string, color: string, size: number, duration = 800) {
+    const t = makeText(this.scene, x, y, str, size).setOrigin(0.5).setColor(color).setStroke('#000', 5).setDepth(DEPTH_FLOAT + 1).setScale(1.8);
+    this.scene.tweens.add({ targets: t, scale: 1, duration: 140, ease: 'Back.easeOut' });
+    this.scene.tweens.add({ targets: t, y: y - 46, alpha: 0, delay: 220, duration: duration - 220, ease: 'Cubic.easeIn', onComplete: () => t.destroy() });
   }
 
   floatText(x: number, y: number, str: string, color: string, size: number, duration = 800) {

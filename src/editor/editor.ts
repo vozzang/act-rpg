@@ -14,8 +14,11 @@ import { View3D } from './view3d';
 
 // ─── 도구 ─────────────────────────────────────────────
 
+/** 지형 칠하기 도구: 바닥(풀) · 길 · 돌바닥 · 나무(벽) · 바위(벽) */
 type TerrainTool = 'grass' | 'road' | 'stone' | 'tree' | 'rock';
+/** 배치 도구: 선택·이동 · 지우기 · 몬스터 종류 · 상점 · 문 · 출발점 · 흑룡 · 장식 */
 type ObjectTool = 'select' | 'erase' | SpawnType | 'shop' | 'gate' | 'start' | 'boss' | 'prop';
+/** 편집기 도구 전체 */
 type Tool = TerrainTool | ObjectTool;
 
 const TERRAIN: { id: TerrainTool; name: string; key: string; color: string }[] = [
@@ -78,6 +81,7 @@ let tool: Tool = 'select';
 let brush = 1;
 const view = { ox: -20, oy: -20, z: 9 }; // 화면 = 타일 * z - o
 let hover = { x: -1, y: -1, fx: 0, fy: 0 };
+/** 고른(또는 끌고 있는) 물건: 종류와 맵 파일 목록에서의 번호 (출발점·흑룡은 하나뿐이라 0) */
 type Picked = { kind: 'spawn' | 'shop' | 'start' | 'boss' | 'prop'; index: number } | { kind: 'gate'; index: number };
 let propKind: PropKind = 'barrel'; // 장식 도구로 놓을 종류
 let selected: Picked | null = null;

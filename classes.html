@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>직업 능력치 · Act RPG</title>
+</head>
+<body>
+  <header>
+    <h1>ACT RPG 정보</h1>
+    <a href="./classes.html" class="on">직업 능력치</a>
+    <a href="./monsters.html">몬스터 도감</a>
+    <a href="./items.html">아이템 도감</a>
+    <a href="./index.html">← 게임으로</a>
+  </header>
+  <main>
+    <div class="controls">
+      <div class="tabs" id="cls-tabs"></div>
+      <label>레벨업 포인트 <select id="alloc"></select></label>
+      <label>최고 레벨 <input id="maxlv" type="number" min="5" max="60" value="30" style="width:70px" /></label>
+    </div>
+    <div id="out"></div>
+    <p class="note" id="note"></p>
+  </main>
+  <script type="module" src="/src/pages/classes.ts"></script>
+</body>
+</html>

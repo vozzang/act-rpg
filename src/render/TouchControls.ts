@@ -12,8 +12,17 @@ const SKILL_R = 30;
 const SKILL_RING = 96; // 공격 버튼 중심에서 스킬 버튼까지 거리
 const SKILL_ANGLES = [180, 220, 260, 300].map((d) => (d * Math.PI) / 180);
 
+/** 터치 버튼: 공격 · 스킬 1~4 · 줍기 · HP 음식 · MP 음식 · 메뉴 · 지도 */
 type ButtonId = 'attack' | 'skill0' | 'skill1' | 'skill2' | 'skill3' | 'interact' | 'hp' | 'mp' | 'menu' | 'map';
-type Button = { id: ButtonId; x: number; y: number; r: number; label: string };
+
+/** 화면의 동그란 버튼 하나 */
+type Button = {
+  id: ButtonId;
+  x: number; // 가운데 (게임 화면 px)
+  y: number;
+  r: number; // 반지름
+  label: string; // 버튼 글자
+};
 
 const BUTTONS: Button[] = [
   { id: 'attack', ...ATTACK, label: '공격' },

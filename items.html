@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>아이템 도감 · Act RPG</title>
+</head>
+<body>
+  <header>
+    <h1>ACT RPG 정보</h1>
+    <a href="./classes.html">직업 능력치</a>
+    <a href="./monsters.html">몬스터 도감</a>
+    <a href="./items.html" class="on">아이템 도감</a>
+    <a href="./index.html">← 게임으로</a>
+  </header>
+  <main>
+    <div class="controls">
+      <label>단계 <select id="tier"></select></label>
+      <label>종류 <select id="slot"><option value="">전체</option><option value="weapon">무기</option><option value="armor">방어구</option><option value="accessory">장신구</option></select></label>
+      <label>등급 <select id="rarity"><option value="">전체</option></select></label>
+      <label>얻는 곳 <select id="from"><option value="">전체</option><option value="drop">몬스터 드랍</option><option value="shop">상점</option><option value="recipe">대장간 조합법</option></select></label>
+      <label>능력치 <select id="stat"><option value="">전체</option></select></label>
+      <label>이름 찾기 <input id="q" placeholder="예: 대검" style="width:140px" /></label>
+    </div>
+    <div id="out"></div>
+    <p class="note" id="note"></p>
+  </main>
+  <script type="module" src="/src/pages/items.ts"></script>
+</body>
+</html>

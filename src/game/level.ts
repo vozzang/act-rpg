@@ -41,11 +41,12 @@ const ARENA_W = 26;
 const laneTop = (i: number) => BORDER + i * (LANE_H + WALL_H);
 const laneCenter = (i: number) => laneTop(i) + (LANE_H - 1) / 2;
 
+/** 게임 시작 때 몬스터 하나를 놓을 자리 */
 export interface Spawn {
-  kind: EnemyKind;
+  kind: EnemyKind; // 몬스터 종류 (중간보스·문지기는 그 몬스터 종류의 모양·행동을 따른다)
   x: number; // 월드 좌표
   y: number;
-  zone: number;
+  zone: number; // 놓인 구역
   elite?: number; // 중간보스면 ELITES[zone - 1]의 몇 번째인지
   gate?: number; // 문지기면 지키는 문 번호 (Level.gates)
 }
@@ -58,21 +59,23 @@ export interface Gate {
   zone: number; // 이 문이 출구인 구역 (마지막 구역의 문은 보스 방 입구)
 }
 
+/** 게임이 쓰는 맵 (맵 파일을 읽거나 자동 생성기로 만든다). 타일 좌표는 칸 번호, 월드 좌표는 px */
 export interface Level {
-  w: number;
-  h: number;
-  tiles: Uint8Array;
-  ground: Uint8Array;
-  spawns: Spawn[];
+  w: number; // 가로 칸 수
+  h: number; // 세로 칸 수
+  tiles: Uint8Array; // 칸마다 지형 (T_FLOOR·T_TREE·T_ROCK·T_SHOP·T_GATE·T_PROP), [y * w + x]
+  ground: Uint8Array; // 칸마다 바닥 무늬 (G_GRASS·G_ROAD·G_STONE, 그리기 전용)
+  spawns: Spawn[]; // 몬스터 자리
   zoneStartsTx: number[]; // 각 구역이 시작하는 타일 x (index 0 = 1구역)
-  arenaTx: number;
-  arenaCenter: { x: number; y: number };
+  arenaTx: number; // 보스 방이 시작하는 타일 x
+  arenaCenter: { x: number; y: number }; // 보스 방 가운데 (월드 좌표, 기둥·석상·지도 표시용)
   shops: { x: number; y: number; zone: number; type: ShopType }[]; // 상인 위치 (월드 좌표)
   gates: Gate[]; // [z - 1] = z구역 출구
   props: PropPlacement[]; // 맵 편집기로 놓은 장식 (타일 좌표)
-  start: { x: number; y: number };
+  start: { x: number; y: number }; // 출발점 (월드 좌표)
 }
 
+/** 시드로 같은 난수열을 만드는 간단한 난수 생성기 (0~1) */
 export function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
   return () => {

@@ -17,7 +17,8 @@ const STAT_ROW = 46;
 const INV_ROW = 34;
 const DEPTH = 145;
 
-type Col = 0 | 1 | 2; // 0: 능력치, 1: 아이템 상자, 2: 가방
+/** 메뉴의 칸: 0 능력치, 1 아이템 상자, 2 가방 */
+type Col = 0 | 1 | 2;
 const colX = (c: 1 | 2) => X + LEFT_W + 24 + (c - 1) * (COL_W + 8);
 
 export class CharMenu {

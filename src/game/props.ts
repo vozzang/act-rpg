@@ -1,13 +1,15 @@
 // 장식 물건: 맵 편집기로 칸에 놓는 나무·바위·통·천막 같은 것. 게임 규칙에는 "지나갈 수 있는지(block)"만 영향을 준다.
 // model은 화면(World3D)의 모델 이름, scale은 그 모델의 크기 배율이다. 칸 하나가 1(가로·세로)이다.
 
+/** 맵 편집기 장식 목록의 묶음 이름 */
 export type PropGroup = '자연' | '야영지' | '물자' | '구조물' | '설원';
 
+/** 장식 한 종류 */
 export interface PropDef {
-  name: string;
-  group: PropGroup;
+  name: string; // 편집기에 보이는 이름
+  group: PropGroup; // 편집기 목록의 묶음
   model: string; // World3D MODELS의 키
-  scale: number;
+  scale: number; // 모델 크기 배율
   block: boolean; // 그 칸을 막는지 (몬스터·플레이어가 지나가지 못한다)
   color: string; // 편집기 2D 지도에 그릴 색
 }
@@ -55,13 +57,15 @@ export const PROPS = {
   iceCrystal: { name: '얼음 결정', group: '설원', model: 'iceCrystalL', scale: 1, block: true, color: '#9ae0ff' },
 } satisfies Record<string, PropDef>;
 
+/** 장식 종류 키 (PROPS의 키) */
 export type PropKind = keyof typeof PROPS;
+/** 장식 종류 전체 (편집기 목록 순서) */
 export const PROP_KINDS = Object.keys(PROPS) as PropKind[];
 
 /** 맵에 놓인 장식 하나. x·y는 타일, r은 90도 단위 회전(0~3) */
 export interface PropPlacement {
-  t: PropKind;
-  x: number;
-  y: number;
-  r?: number;
+  t: PropKind; // 장식 종류
+  x: number; // 칸 x
+  y: number; // 칸 y
+  r?: number; // 회전 (90도 단위 0~3, 없으면 0)
 }

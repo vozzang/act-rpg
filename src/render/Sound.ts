@@ -8,6 +8,7 @@ const FILES = [
   'coin', 'buy', 'coins', 'drink1', 'drink2', 'equip', 'pickup', 'drop', 'ui1', 'ui2', 'uiError', 'page1', 'page2', 'gate', 'latch',
   'levelup', 'revive', 'down', 'victory', 'defeat',
 ] as const;
+/** 효과음 이름 (public/sfx/이름.m4a) */
 export type SoundName = (typeof FILES)[number];
 
 const HEAR_DIST = 700; // 이 거리(월드 px)보다 먼 소리는 틀지 않는다

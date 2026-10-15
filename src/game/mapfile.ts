@@ -7,27 +7,29 @@ import type { EnemyKind, ShopType } from './types';
 
 /** 맵에 놓는 몬스터. elite1·elite2는 그 구역의 첫째·둘째 중간보스(ELITES), keeper는 그 구역 출구 문지기(GATE_KEEPERS) */
 export type SpawnType = Exclude<EnemyKind, 'boss'> | 'elite1' | 'elite2' | 'keeper';
+/** 맵 편집기에서 놓을 수 있는 몬스터 종류 전체 */
 export const SPAWN_TYPES: SpawnType[] = [
   'slime', 'goblin', 'skeleton', 'orc',
   'hound', 'thrower', 'bandit', 'assassin', 'raider', 'iceWitch', 'darkKnight', 'zombie', 'flameKnight', 'pyromancer',
   'elite1', 'elite2', 'keeper',
 ];
 
+/** 맵 파일(world.json)의 내용 */
 export interface MapFile {
-  version: 1;
-  w: number;
-  h: number;
+  version: 1; // 파일 형식 번호
+  w: number; // 가로 칸 수
+  h: number; // 세로 칸 수
   /** 지형: 한 줄에 한 행. '.' 바닥, 'T' 나무, 'R' 바위 (상점·문 칸은 아래 목록으로 정한다) */
   tiles: string[];
   /** 바닥 무늬: '.' 풀, '=' 길, '#' 돌바닥 */
   ground: string[];
   zoneStartsTx: number[]; // 구역마다 시작하는 타일 x (구역 수 = 길이)
   arenaTx: number; // 보스 방이 시작하는 타일 x
-  start: { x: number; y: number };
+  start: { x: number; y: number }; // 출발점 칸
   boss: { x: number; y: number }; // 흑룡이 기다리는 곳 (보스 방 가운데쯤)
   shops: { x: number; y: number; type?: ShopType }[]; // 상점 가판대 칸 (type이 없으면 예전 맵: 공격 상점으로 본다)
   gates: { x: number; y0: number; y1: number }[]; // 구역 출구 문 (x열의 y0~y1칸). 구역마다 하나
-  spawns: { t: SpawnType; x: number; y: number }[];
+  spawns: { t: SpawnType; x: number; y: number }[]; // 몬스터 (종류와 칸)
   props?: PropPlacement[]; // 장식 물건 (길을 막는 것은 그 칸이 막힌다)
 }
 

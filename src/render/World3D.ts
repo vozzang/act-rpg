@@ -76,13 +76,18 @@ const UACP = {
   // 중간보스·문지기 전용
   uElf: 'Elf', uVikingF: 'Viking_Female', uNinjaSand: 'Ninja_Sand', uKnightGoldF: 'Knight_Golden_Female',
 } as const;
+/** Quaternius 캐릭터 모델 이름 (UACP의 키) */
 type UacpKey = keyof typeof UACP;
 /** 게임이 부르는 동작 이름 → 이 팩의 클립 이름 (달리기·도약 클립이 없어 걷기로 대신한다) */
 const UACP_ANIMS = {
   idle: 'Idle', walk: 'Walk', sprint: 'Walk', jump: 'Walk', die: 'Defeat',
   'attack-melee-right': 'Punch', 'holding-left-shoot': 'Shoot_OneHanded', 'holding-right': 'RecieveHit',
 };
-type Model = { scene: THREE.Object3D; animations: THREE.AnimationClip[] };
+/** 불러온 3D 모델: 장면(복제해서 쓴다)과 애니메이션 클립 */
+type Model = {
+  scene: THREE.Object3D;
+  animations: THREE.AnimationClip[];
+};
 
 const U = 1 / TILE; // 월드 단위 → 3D 단위
 const SQUASH_TIME = 0.35; // 죽는 동작이 없는 적(슬라임)이 찌그러져 사라지는 시간
@@ -97,7 +102,14 @@ const VOLCANO_ZONE = 5;
 const SNOW_ZONE = 3;
 
 /** 6~10구역 테마: [모델, 크기] 목록. square면 바위 칸을 90도 단위로만 돌린다 (성벽처럼 반듯한 모델) */
-type ZoneTheme = { trees: [ModelKey, number][]; rocks: [ModelKey, number][]; rocksHigh: [ModelKey, number][]; floor: [ModelKey, number][]; floorChance: number; square?: boolean };
+type ZoneTheme = {
+  trees: [ModelKey, number][]; // 나무 칸에 놓는 모델 (없으면 바위 모델)
+  rocks: [ModelKey, number][]; // 길가 바위 칸
+  rocksHigh: [ModelKey, number][]; // 벽 안쪽(사방이 막힌) 바위 칸
+  floor: [ModelKey, number][]; // 바닥에 가끔 놓는 장식
+  floorChance: number; // 바닥 칸에 장식을 놓을 확률
+  square?: boolean; // 바위 칸을 90도 단위로만 돌린다
+};
 const ZONE_THEMES: Record<number, ZoneTheme> = {
   6: { // 독기의 늪: 검은 나무, 이끼 낀 바위, 연잎·버섯
     trees: [['ntTreeDark', 1.1], ['ntOakDark', 1.3]],
@@ -143,11 +155,15 @@ const DROP_SCALE: Partial<Record<ModelKey, number>> = { chest: 0.6, ham: 0.9, ap
 
 /** 직업·적별 3D 모델 설정 */
 type Look = {
-  model: ModelKey;
-  scale: [number, number, number];
-  tint?: number;
+  model: ModelKey; // 몸 모델
+  scale: [number, number, number]; // 크기 배율 (가로·키·깊이)
+  tint?: number; // 몸 색에 곱할 색 (구역 분위기·종족 구분)
   weapons?: {
-    model: ModelKey; bone: string; pos: [number, number, number]; rot: [number, number, number]; scale: number;
+    model: ModelKey; // 무기 모델
+    bone: string; // 붙일 뼈 이름 (오른손 등)
+    pos: [number, number, number]; // 뼈 기준 위치
+    rot: [number, number, number]; // 뼈 기준 회전 (라디안)
+    scale: number; // 크기
     glowTip?: number; // 무기 끝에 빛나는 구슬 (지팡이)
     glowSize?: number; // 구슬 반지름 (무기 모델 단위, 기본 0.07)
   }[];
@@ -243,18 +259,19 @@ const ELITE_LOOKS: Record<string, Look> = {
   '흑룡의 문지기': { ...uLook('uKnightGold', 1.15, 'attack-melee-right', { model: 'spear', scale: 4, glowTip: 0xff3010 }), tint: 0x9a6a6a },
 };
 
+/** 화면에 놓인 캐릭터 하나 (플레이어·적·상인) */
 type Char = {
-  root: THREE.Object3D;
-  mixer: THREE.AnimationMixer;
-  actions: Map<string, THREE.AnimationAction>;
-  current: string;
-  oneShotUntil: number;
-  materials: THREE.MeshStandardMaterial[];
-  baseEmissive: THREE.Color[];
-  lastX: number;
+  root: THREE.Object3D; // 장면에 놓인 몸
+  mixer: THREE.AnimationMixer; // 애니메이션 재생기
+  actions: Map<string, THREE.AnimationAction>; // 동작 이름 → 재생할 동작 (게임 이름 별칭 포함)
+  current: string; // 지금 동작
+  oneShotUntil: number; // 한 번만 하는 동작(공격 등)이 끝나는 시각 — 그 전에는 다른 동작으로 바꾸지 않는다
+  materials: THREE.MeshStandardMaterial[]; // 번쩍임(피격·힘 모으기)을 바꿀 재질
+  baseEmissive: THREE.Color[]; // 재질의 원래 빛 색 (번쩍임을 끄면 되돌린다)
+  lastX: number; // 지난 프레임 위치 (움직였는지 보고 걷기·멈춤을 고른다)
   lastZ: number;
-  prevAtk: number;
-  attack: string;
+  prevAtk: number; // 지난 프레임의 공격 모션 값 (새 공격을 알아채는 데 쓴다)
+  attack: string; // 이 캐릭터의 공격 동작 이름
 };
 
 const hash = (a: number, b: number) => {

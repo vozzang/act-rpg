@@ -14,7 +14,13 @@ const ROWS = 4; // 가장 많이 파는 상점(공격 상점)의 줄 수. 줄이
 const panelH = (rows: number) => 70 + rows * ROW_H + 34;
 const H = panelH(ROWS);
 
-type Row = { zone: Phaser.GameObjects.Zone; title: Phaser.GameObjects.Text; detail: Phaser.GameObjects.Text; price: Phaser.GameObjects.Text };
+/** 상점 창의 한 줄 (진열대 한 칸) */
+type Row = {
+  zone: Phaser.GameObjects.Zone; // 클릭 영역
+  title: Phaser.GameObjects.Text; // 물건 이름
+  detail: Phaser.GameObjects.Text; // 수치·설명
+  price: Phaser.GameObjects.Text; // 값 또는 '구매함'
+};
 
 export class ShopPanel {
   /** 열려 있는 상점 id (닫혀 있으면 null) */

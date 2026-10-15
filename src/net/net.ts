@@ -3,23 +3,25 @@
 import Peer, { type DataConnection } from 'peerjs';
 import type { AttrKey, ClassId, InputState, LobbyPlayer, Snapshot } from '../game/types';
 
+/** 참가자 → 방장 메시지 */
 export type ClientMsg =
-  | { t: 'hello'; name: string }
-  | { t: 'pick'; cls: ClassId }
-  | { t: 'input'; input: InputState }
-  | { t: 'alloc'; attr: AttrKey }
-  | { t: 'buy'; shop: number; idx: number }
+  | { t: 'hello'; name: string } // 접속 인사 (닉네임)
+  | { t: 'pick'; cls: ClassId } // 대기실에서 직업 고르기
+  | { t: 'input'; input: InputState } // 매 프레임 조작
+  | { t: 'alloc'; attr: AttrKey } // 능력치 포인트 1 배분
+  | { t: 'buy'; shop: number; idx: number } // 상점 shop의 idx번째 물건 사기
   | { t: 'slot'; idx: number } // 아이템 상자 칸 사용 (음식 먹기 / 장비를 가방에)
   | { t: 'move'; from: 'inv' | 'bag'; idx: number } // 장비를 상자 ↔ 가방으로 옮기기
   | { t: 'dropItem'; from: 'inv' | 'bag'; idx: number } // 장비 버리기
   | { t: 'forge'; shop: number; picks: { from: 'inv' | 'bag'; idx: number }[]; random: boolean }; // 대장간 조합
 
+/** 방장 → 참가자 메시지 */
 export type HostMsg =
-  | { t: 'lobby'; players: LobbyPlayer[]; you: string }
-  | { t: 'start'; seed: number; players: LobbyPlayer[] }
-  | { t: 'snap'; s: Snapshot }
-  | { t: 'toLobby' }
-  | { t: 'reject'; reason: string };
+  | { t: 'lobby'; players: LobbyPlayer[]; you: string } // 대기실 상태 (you: 받는 참가자의 id)
+  | { t: 'start'; seed: number; players: LobbyPlayer[] } // 게임 시작
+  | { t: 'snap'; s: Snapshot } // 게임 상태 (초당 20번)
+  | { t: 'toLobby' } // 판이 끝나 대기실로 돌아가기
+  | { t: 'reject'; reason: string }; // 참가 거절 (방이 가득 참 등)
 
 const PREFIX = 'actrpg-v1-';
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';

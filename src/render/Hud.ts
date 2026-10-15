@@ -28,10 +28,23 @@ const CONTROLS = {
   touch: '', // 터치 화면에서는 버튼이 그 자리를 쓴다
 };
 
+/** 마지막으로 쓴 입력 장치: 키보드·마우스 · 게임패드 · 터치 (버튼 안내 글자가 이것에 맞춰 바뀐다) */
 export type Device = 'kbm' | 'pad' | 'touch';
 
-type Rect = { x: number; y: number; w: number; h: number };
-type Tip = { text: string; x: number; y: number };
+/** 화면 위 네모 영역 (마우스를 올렸는지 확인용, 화면 px) */
+type Rect = {
+  x: number; // 왼쪽
+  y: number; // 위
+  w: number; // 너비
+  h: number; // 높이
+};
+
+/** 마우스를 올렸을 때 띄우는 설명 상자 */
+type Tip = {
+  text: string; // 설명 글
+  x: number; // 띄울 자리 (화면 px)
+  y: number;
+};
 const inside = (r: Rect, x: number, y: number) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
 const skillRect = (i: number): Rect => ({ x: SKILL_X + i * (SKILL_SLOT + SKILL_GAP), y: SKILL_Y, w: SKILL_SLOT, h: SKILL_SLOT });
 const invRect = (i: number): Rect => ({ x: INV_X + i * (INV_SLOT + INV_GAP), y: INV_Y, w: INV_SLOT, h: INV_SLOT });

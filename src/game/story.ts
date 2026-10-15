@@ -1,14 +1,16 @@
 // 스토리 대본: 인트로, 구역마다 들어설 때, 흑룡의 둥지, 엔딩. 한 장면(StoryScene)은 여러 쪽(대사)으로 이뤄진다.
 // 화자(speaker)가 없으면 해설이다. 고치려면 여기 글만 바꾸면 된다.
 
+/** 대사 한 쪽 */
 export interface StoryLine {
-  speaker?: string;
-  text: string;
+  speaker?: string; // 말하는 사람 (없으면 해설)
+  text: string; // 글
 }
 
+/** 장면 하나 (여러 쪽을 차례로 보여 준다) */
 export interface StoryScene {
   title: string; // 대화창 위에 작게 뜨는 제목
-  lines: StoryLine[];
+  lines: StoryLine[]; // 쪽들
 }
 
 export const STORY_INTRO: StoryScene = {

@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>몬스터 도감 · Act RPG</title>
+</head>
+<body>
+  <header>
+    <h1>ACT RPG 정보</h1>
+    <a href="./classes.html">직업 능력치</a>
+    <a href="./monsters.html" class="on">몬스터 도감</a>
+    <a href="./items.html">아이템 도감</a>
+    <a href="./index.html">← 게임으로</a>
+  </header>
+  <main>
+    <div class="controls">
+      <label>수치를 볼 구역 <select id="zone"></select></label>
+      <label>파티 인원 <select id="party"><option>1</option><option>2</option><option>3</option><option selected>4</option></select></label>
+      <label>이름 찾기 <input id="q" placeholder="예: 오크" style="width:140px" /></label>
+    </div>
+    <div id="out"></div>
+    <p class="note" id="note"></p>
+  </main>
+  <script type="module" src="/src/pages/monsters.ts"></script>
+</body>
+</html>
