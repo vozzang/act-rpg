@@ -60,7 +60,8 @@ export interface ClassDef {
   height: number; // 키 (머리 위 이름표 위치 기준, 월드 px)
   speed: number;
   aggro: number; // 적이 이 직업을 노릴 때 거리 배율. 작을수록 더 잘 노려진다.
-  mainAttr: AttrKey; // 공격력이 오르는 주 능력치
+  mainAttr: AttrKey; // 주 능력치 (★ 표시, 레벨업마다 많이 오른다)
+  atkAttr?: AttrKey; // 공격력이 오르는 능력치 (없으면 주 능력치). 수호자는 주 능력치가 체력이지만 공격은 힘으로 오른다
   attrs: Attrs; // 1레벨 능력치
   attrGrowth: Attrs; // 레벨업마다 자동으로 오르는 능력치
   bonus: { hp: number; atk: number; def: number; crit: number; mp: number; mpLv: number; mpRegen: number }; // 능력치와 별개인 직업 기본값
@@ -89,7 +90,9 @@ export const CLASSES: Record<ClassId, ClassDef> = {
   },
   dwarf: {
     name: '수호자', race: '드워프', color: 0xd08040, r: 15, height: 40, speed: 150, aggro: 0.5,
-    mainAttr: 'str',
+    // 수호자: 주 능력치는 체력(최대 HP·방어), 공격력은 힘으로 오른다. 포인트를 힘에 주면 공격형, 체력에 주면 탱커형
+    mainAttr: 'vit',
+    atkAttr: 'str',
     attrs: { str: 9, dex: 2, int: 2, vit: 12 },
     attrGrowth: { str: 0.75, dex: 0.25, int: 0.25, vit: 1.25 },
     bonus: { hp: 104, atk: 4.8, def: 4.65, crit: 0.018, mp: 60, mpLv: 4, mpRegen: 2.5 },
@@ -163,7 +166,7 @@ export const ATTR_EFFECT = {
 export const DODGE_MAX = 0.25;
 
 export const ATTR_DESC: Record<AttrKey, string> = {
-  str: '근접 공격력, 방어',
+  str: '검사·수호자 공격력, 방어',
   dex: '원거리 공격력, 치명타, 공격 속도, 회피',
   int: '마법 공격력, MP, 스킬 재사용, 회복량',
   vit: '최대 HP, 방어',
@@ -188,7 +191,7 @@ export function deriveStats(cls: ClassId, level: number, attrs: Attrs, items: (I
   const sum = (k: keyof ItemStats) => items.reduce((s, it) => s + (it?.stats[k] ?? 0), 0);
   return {
     maxHp: Math.round(def.bonus.hp + attrs.vit * e.vitHp + (level - 1) * e.levelHp + sum('maxHp')),
-    atk: Math.round(def.bonus.atk + attrs[def.mainAttr] * e.mainAtk + sum('atk')),
+    atk: Math.round(def.bonus.atk + attrs[def.atkAttr ?? def.mainAttr] * e.mainAtk + sum('atk')),
     def: Math.round(def.bonus.def + attrs.vit * e.vitDef + attrs.str * e.strDef + sum('def')),
     crit: Math.min(0.75, def.bonus.crit + attrs.dex * e.dexCrit + sum('crit')),
     haste: attrs.dex * e.dexHaste,

@@ -63,7 +63,7 @@ function renderRoom() {
       <div class="name">${def.name}</div>
       <div class="desc">${def.desc}</div>
       <div class="skill">${def.skills.map((sk, i) => `<div>Lv.${sk.unlock} ${i === 3 ? '★' : ''}<b>${sk.name}</b> <span class="mp">MP ${sk.mp}</span></div>`).join('')}</div>
-      <div class="stats">주 능력치: ${ATTR_NAMES[def.mainAttr]}<br />${attrs}<br />HP ${st.maxHp} · 공격 ${st.atk} · 방어 ${st.def} · 치명 ${Math.round(st.crit * 100)}% · 회피 ${Math.round(st.dodge * 100)}%</div>
+      <div class="stats">주 능력치: ${ATTR_NAMES[def.mainAttr]}${def.atkAttr && def.atkAttr !== def.mainAttr ? ` (공격은 ${ATTR_NAMES[def.atkAttr]})` : ''}<br />${attrs}<br />HP ${st.maxHp} · 공격 ${st.atk} · 방어 ${st.def} · 치명 ${Math.round(st.crit * 100)}% · 회피 ${Math.round(st.dodge * 100)}%</div>
       <div class="owner"></div>`;
     (card.querySelector('.owner') as HTMLElement).textContent = owner ? owner.name : '';
     card.onclick = () => pickClass(id);
