@@ -53,6 +53,7 @@ export type ItemStats = Partial<Record<'atk' | 'def' | 'maxHp' | 'crit' | AttrKe
 
 export interface Item {
   id: number;
+  key?: string; // 아이템 목록(items.ts)의 키
   slot: Slot;
   rarity: Rarity;
   zone: number; // 드랍된 구역. 이름의 재질과 기본 수치를 결정한다.

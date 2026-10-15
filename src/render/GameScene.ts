@@ -14,7 +14,6 @@ import { Effects } from './Effects';
 import { StoryPanel } from './StoryPanel';
 import { ForgePanel } from './ForgePanel';
 import { Sound } from './Sound';
-import { Music, zoneTrack } from './Music';
 import { playEventSound } from './sfxEvents';
 import { STORY_BOSS, STORY_ENDING, STORY_INTRO, STORY_ZONES } from '../game/story';
 import { CharMenu } from './CharMenu';
@@ -44,7 +43,6 @@ export class GameScene extends Phaser.Scene {
   private sfx!: Sound;
   private uiSoundState = ''; // 상점·메뉴·스토리 쪽이 바뀌었는지 비교해 효과음을 낸다
   private endSoundPlayed = false;
-  private battleUntil = 0; // 중간보스와 싸운 뒤 전투 곡을 조금 더 이어 갈 시각 (초)
   // 스토리 진행: 인트로를 띄웠는지, 몇 구역까지 이야기를 봤는지, 흑룡·엔딩 이야기를 봤는지
   private storyStarted = false;
   private storyZone = 0;
@@ -203,7 +201,6 @@ export class GameScene extends Phaser.Scene {
       Phaser.Input.Keyboard.JustDown(this.keys.M) || this.pad.pressed(BTN.VIEW) || !!this.touch?.consume('map'));
     for (const e of events) this.effects.play(e, snap, this.me);
     this.playSounds(events, snap);
-    this.updateMusic(snap);
     this.touch?.update(this.me); // 버튼 그리기, '방금 눌림' 초기화 (이번 프레임에 다 쓴 뒤에)
     this.updateStory(snap);
     this.story.update(dt, this.device);
@@ -214,20 +211,6 @@ export class GameScene extends Phaser.Scene {
       this.effects.showEnd(snap, canReturn ? this.session.backToLobby : null);
       if (canReturn && (Phaser.Input.Keyboard.JustDown(this.keys.ENTER) || this.pad.pressed(BTN.A))) this.session.backToLobby();
     }
-  }
-
-  /**
-   * 배경음악: 구역 곡(숲·들판), 중간보스·문지기·흑룡과 싸울 때는 전투 곡, 승리하면 들판 곡(엔딩), 전멸하면 멈춘다.
-   * 전투 곡은 싸움이 끝나도 4초 더 이어 가서 곡이 자꾸 바뀌지 않게 한다.
-   */
-  private updateMusic(s: Snapshot) {
-    const now = this.time.now / 1000;
-    if (s.status === 'victory') return Music.play('field');
-    if (s.status === 'defeat') return Music.play(null);
-    const me = this.me;
-    const elite = !!me && s.enemies.some((e) => e.elite && e.hp > 0 && Math.hypot(e.x - me.x, e.y - me.y) < 450);
-    if (s.boss || elite) this.battleUntil = now + 4;
-    Music.play(now < this.battleUntil ? 'battle' : zoneTrack(s.zone));
   }
 
   /** 이벤트·창 열고 닫기·스토리 쪽 넘김·승패에 맞는 효과음 */
