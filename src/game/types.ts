@@ -126,6 +126,18 @@ export interface Player extends Body {
   dead: boolean; // 쓰러졌는지 (동료가 곁에 서 있으면 부활)
   revive: number; // 부활 게이지 0~REVIVE_TIME
   kills: number; // 쓰러뜨린 적 수 (결과 화면용)
+  record: PlayerRecord; // 한 판 기록 (결과 화면용)
+}
+
+/** 한 판 동안의 개인 기록 (결과 화면에 보여 준다) */
+export interface PlayerRecord {
+  xp: number; // 얻은 경험치 합
+  gold: number; // 얻은 돈 합
+  dmg: number; // 적에게 준 피해 합 (지속 피해 포함, 남은 체력보다 많이 준 만큼은 빼고)
+  taken: number; // 받은 피해 합
+  downs: number; // 쓰러진 횟수
+  revives: number; // 쓰러진 동료를 일으킨 횟수 (곁에 서 있기·치유의 빛)
+  eliteKills: number; // 쓰러뜨린 중간보스·문지기 수
 }
 
 /** 몬스터 (흑룡 포함) */
@@ -152,6 +164,7 @@ export interface Enemy extends Body {
   bleedDps: number; // 출혈 한 겹의 초당 피해
   dotBy: string; // 지속 피해를 건 플레이어 id (쓰러뜨린 사람으로 친다)
   dotTick: number; // 지속 피해를 다음에 줄 때까지 남은 시간
+  dungeon?: boolean; // 던전 웨이브로 나온 적
   rush: number; // 멀리서 공격받아 쏜 쪽으로 돌격하는 남은 시간 (빨라진다)
   taunt: number; // 도발 남은 시간
   tauntBy: string; // 도발한(또는 멀리서 쏜) 플레이어 id
@@ -234,6 +247,7 @@ export type BoomKind = 'orb' | 'fireOrb' | 'fireball' | 'meteor' | 'rain' | 'sla
 export type GameEvent =
   | { t: 'dmg'; x: number; y: number; v: number; crit: boolean; toPlayer: boolean; dot?: 'burn' | 'bleed' } // 피해 (v: 피해량, toPlayer: 플레이어가 맞았는지, dot: 화염·출혈 지속 피해)
   | { t: 'proc'; effect: WeaponEffect; x: number; y: number } // 유니크 무기 효과가 걸렸다 (맞은 자리에 얼음·불꽃·피가 튄다)
+  | { t: 'warp'; x: number; y: number } // 던전 문으로 순간이동한 자리 (빛 기둥)
   | { t: 'dodge'; x: number; y: number } // 플레이어가 적의 공격을 피했다
   // 소리용 이벤트 (화면 효과는 없다)
   | { t: 'kill'; x: number; y: number; kind: EnemyKind; elite: boolean } // 적이 쓰러졌다
@@ -258,7 +272,8 @@ export type GameEvent =
   | { t: 'swing'; x: number; y: number; aim: number; range: number; arc: number; enemy: boolean; look?: WeaponEffect }; // 근접 공격 부채꼴 (enemy: 적의 공격인지, look: 유니크 무기 칼자국 모양)
 
 /** 판 상태: 진행 중 · 승리 · 전멸 */
-export type GameStatus = 'playing' | 'victory' | 'defeat';
+/** 게임 상태: 진행 중 · 승리(흑룡 처치) · 전멸 · 도중에 끝냄(방장이 끝내기를 눌렀거나 내가 나갔거나 방장 연결이 끊김) */
+export type GameStatus = 'playing' | 'victory' | 'defeat' | 'ended';
 
 /** 화면에 필요한 적 정보만 (네트워크로 보내는 양을 줄이려고 공격력·경험치·AI 내부 값 등은 뺀다) */
 export type EnemyView = Pick<Enemy,
@@ -283,6 +298,22 @@ export interface Snapshot {
   events: GameEvent[]; // 지난 스냅샷 뒤에 일어난 일
   boss: { hp: number; maxHp: number } | null; // 흑룡이 깨어나 있으면 체력 (보스 체력바용)
   gates: boolean[]; // 문마다 열렸는지 ([z - 1] = z구역 출구)
+  dungeon: DungeonView | null; // 던전 진행 (맵에 던전이 없으면 null)
+}
+
+/**
+ * 던전 진행 상태. open 아직 아무도 안 들어감(문 열림) · active 싸우는 중(문 열림, 늦게 와도 들어갈 수 있다) ·
+ * cleared 다 물리침(보상 상자, 투기장 북쪽에 나가는 문) · closed 끝남(클리어 뒤 모두 나왔거나 실패, 문 닫힘)
+ */
+export type DungeonState = 'open' | 'active' | 'cleared' | 'closed';
+
+/** 스냅샷의 던전 정보 */
+export interface DungeonView {
+  state: DungeonState;
+  wave: number; // 지금 웨이브 (1부터, 시작 전 0)
+  waves: number; // 웨이브 수
+  left: number; // 남은 적 수
+  cleared: boolean; // 클리어했는지 (끝난 뒤 결과 화면용)
 }
 
 /** 로비(대기실)의 참가자 */

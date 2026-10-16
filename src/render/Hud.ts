@@ -61,6 +61,7 @@ export class Hud {
   private invTexts: { label: Phaser.GameObjects.Text; count: Phaser.GameObjects.Text }[] = [];
   private tooltip: Phaser.GameObjects.Text;
   private bossText: Phaser.GameObjects.Text;
+  private dungeonText: Phaser.GameObjects.Text;
   private skillKeyTexts: Phaser.GameObjects.Text[] = [];
   private slotKeyTexts: Phaser.GameObjects.Text[] = [];
   private controlsText: Phaser.GameObjects.Text;
@@ -108,6 +109,7 @@ export class Hud {
     this.tooltip = makeText(scene, 0, 0, '', 12).setDepth(130).setOrigin(0.5, 1)
       .setPadding(8, 6, 8, 6).setBackgroundColor('#101820').setWordWrapWidth(280).setVisible(false);
     this.bossText = makeText(scene, VIEW_W / 2, 98, '', 14).setDepth(101).setOrigin(0.5, 1);
+    this.dungeonText = makeText(scene, VIEW_W / 2, 64, '', 16).setDepth(101).setOrigin(0.5, 0.5).setColor('#ffb070').setStroke('#000', 4);
 
     this.controlsText = makeText(scene, VIEW_W - 12, hintBottom - 4, CONTROLS.kbm, 11)
       .setDepth(101).setOrigin(1, 1).setAlign('right').setAlpha(0.6).setStroke('#000', 3);
@@ -124,10 +126,17 @@ export class Hud {
   }
 
   /** 매 프레임. 그래픽은 여기서 지우고 다시 그린다 (미니맵 점은 MapView가 같은 그래픽에 덧그림). */
-  update(s: Snapshot, me: Player | undefined) {
+  /** inDungeon: 내가 던전 투기장 안에 있는지 (웨이브 진행을 위쪽 가운데에 보여 준다) */
+  update(s: Snapshot, me: Player | undefined, inDungeon = false) {
     const g = this.g;
     g.clear();
     this.drawPanels(s);
+    const dg = s.dungeon;
+    if (dg && inDungeon && dg.state === 'active') {
+      this.dungeonText.setText(dg.wave === 0 ? '던전 · 곧 적이 몰려온다' : `던전 웨이브 ${dg.wave} / ${dg.waves}  ·  남은 적 ${dg.left}`).setVisible(true);
+    } else if (dg && inDungeon && dg.state === 'cleared') {
+      this.dungeonText.setText('던전 클리어! 보상 상자를 줍고 북쪽 파란 문으로 나가세요').setVisible(true);
+    } else this.dungeonText.setVisible(false);
     let tip: Tip | null = null;
     if (me) {
       this.drawInfo(me);

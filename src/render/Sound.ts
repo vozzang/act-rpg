@@ -35,10 +35,9 @@ export class Sound {
       this.ctx = null; // 소리를 낼 수 없는 환경
       return;
     }
-    // 브라우저는 사용자가 한 번 누르거나 클릭해야 소리를 낸다
-    const resume = () => void this.ctx?.resume();
-    window.addEventListener('pointerdown', resume);
-    window.addEventListener('keydown', resume);
+    // 브라우저는 사용자가 한 번 누르거나 클릭해야 소리를 낸다 (게임이 끝나 닫힌 뒤에는 깨우지 않는다)
+    window.addEventListener('pointerdown', this.resume);
+    window.addEventListener('keydown', this.resume);
     for (const name of FILES) this.loadOne(name);
   }
 
@@ -101,7 +100,13 @@ export class Sound {
     this.play(names[Math.floor(Math.random() * names.length)], opts);
   }
 
+  private resume = () => {
+    if (this.ctx?.state === 'suspended') this.ctx.resume().catch(() => {});
+  };
+
   destroy() {
+    window.removeEventListener('pointerdown', this.resume);
+    window.removeEventListener('keydown', this.resume);
     void this.ctx?.close();
     this.ctx = null;
   }

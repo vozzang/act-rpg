@@ -2,7 +2,7 @@
 // 몬스터 자리는 게임이 쓰는 맵(maps/world.json), 경험치는 sim.ts의 createEnemy와 같은 계산(종류별 경험치 × 구역 배율 × 중간보스 배율)이다.
 // 경험치는 파티 인원으로 나누지 않고 살아 있는 파티원이 각자 다 받으므로, 인원수와 상관없이 같은 표가 된다.
 import './pages.css';
-import { ELITE, ELITES, ENEMIES, GATE_KEEPERS, ZONE_NAMES, xpForLevel, zoneScale } from '../game/data';
+import { DUNGEON, ELITE, ELITES, ENEMIES, GATE_KEEPERS, ZONE_NAMES, xpForLevel, zoneScale } from '../game/data';
 import { gameLevel } from '../game/world';
 import type { EnemyKind } from '../game/types';
 
@@ -83,6 +83,13 @@ function render() {
     acc += xpForLevel(lv);
   }
 
+  // 던전 (5구역 던전 문, 들어가면): 웨이브 몬스터는 무작위라 평균값
+  const zx = zoneScale(DUNGEON.zone).xp;
+  const avg = DUNGEON.pool.reduce((s, k) => s + ENEMIES[k].xp, 0) / DUNGEON.pool.length;
+  const dNormal = DUNGEON.waves.reduce((s, w) => s + w.count, 0);
+  const dElites = DUNGEON.waves.flatMap((w) => w.elites ?? []);
+  const dXp = Math.round(dNormal * avg * zx + dElites.reduce((s, e) => s + ENEMIES[e.kind].xp * zx * ELITE.xp, 0));
+
   $('out').innerHTML = `
     <div class="card"><h2>구역별 경험치와 레벨 (처치 비율 ${Math.round(rate * 100)}%)</h2>
       <div class="sub">경험치는 파티 인원으로 나누지 않고 <b>살아 있는 파티원이 각자 다 받는다</b> — 1명이든 4명이든 같은 표다. 몬스터가 쓰러질 때 쓰러져 있던 사람은 받지 못한다.
@@ -91,7 +98,8 @@ function render() {
       <div class="scroll"><table>
         <thead><tr><th>구역</th><th>일반 몬스터</th><th>경험치 배율</th><th>일반 경험치</th><th>중간보스·문지기</th><th>구역 합계</th><th>누적</th>
           <th>들어갈 때</th><th>마칠 때</th><th class="l">다음 레벨까지</th></tr></thead>
-        <tbody>${rows.join('')}</tbody></table></div></div>
+        <tbody>${rows.join('')}</tbody></table></div>
+      <div class="sub" style="margin-top:8px">+ <b>던전</b> (5구역 던전 문, 한 판에 한 번): 일반 몬스터 ${dNormal}마리 + 중간보스 ${dElites.length}마리 ≈ <b class="main">${dXp.toLocaleString()}</b> 경험치 (몬스터가 무작위라 평균값, 위 표에는 넣지 않았다).</div></div>
     <div class="card"><h2>레벨별 필요 경험치</h2>
       <div class="sub">누적 = 1레벨부터 그 레벨에 오르기까지 모은 경험치, 필요 = 다음 레벨까지 필요한 경험치.</div>
       <div class="scroll"><table style="max-width:560px">

@@ -28,10 +28,10 @@ export class DevItemPanel {
 
   constructor(private sim: Sim, private myId: string, private onToggle: (open: boolean) => void) {
     const css = (el: HTMLElement, s: string) => (el.style.cssText = s, el);
-    this.toggleBtn = css(document.createElement('button'), 'position:fixed;top:8px;right:8px;z-index:1001;padding:6px 10px;border-radius:6px;border:1px solid #2c3a56;background:#1a2336;color:#e8ecf4;font:13px sans-serif;cursor:pointer;opacity:.85') as HTMLButtonElement;
+    this.toggleBtn = css(document.createElement('button'), 'position:fixed;top:48px;right:8px;z-index:1001;padding:6px 10px;border-radius:6px;border:1px solid #2c3a56;background:#1a2336;color:#e8ecf4;font:13px sans-serif;cursor:pointer;opacity:.85') as HTMLButtonElement;
     this.toggleBtn.textContent = '🛠 장비 (`)';
     this.toggleBtn.onclick = () => this.toggle();
-    this.root = css(document.createElement('div'), 'position:fixed;top:44px;right:8px;bottom:8px;width:820px;max-width:calc(100vw - 16px);z-index:1000;background:#0f1522f2;border:1px solid #2c3a56;border-radius:10px;color:#e8ecf4;font:13px "Apple SD Gothic Neo","Malgun Gothic",sans-serif;display:none;flex-direction:column;overflow:hidden') as HTMLDivElement;
+    this.root = css(document.createElement('div'), 'position:fixed;top:84px;right:8px;bottom:8px;width:820px;max-width:calc(100vw - 16px);z-index:1000;background:#0f1522f2;border:1px solid #2c3a56;border-radius:10px;color:#e8ecf4;font:13px "Apple SD Gothic Neo","Malgun Gothic",sans-serif;display:none;flex-direction:column;overflow:hidden') as HTMLDivElement;
     const sel = (id: string, opts: [string, string][]) => `<select id="${id}" style="background:#0e1420;color:#e8ecf4;border:1px solid #2c3a56;border-radius:5px;padding:3px">${opts.map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select>`;
     const tiers: [string, string][] = [['0', '단계 전체'], ...[1, 2, 3, 4, 5].map((t): [string, string] => [String(t), `${t}단계`])];
     const rars: [string, string][] = [['', '등급 전체'], ...RARITIES.map((r): [string, string] => [r, RARITY[r].name]), ['unique', '유니크']];

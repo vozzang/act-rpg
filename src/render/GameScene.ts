@@ -5,7 +5,7 @@
 //  - 위: 이 Phaser 장면 (투명 배경) — HUD, 지도, 이름표, 데미지 숫자 같은 글자와 표시
 // 이 장면은 카메라를 움직이지 않으므로 Phaser 좌표가 곧 화면 좌표다.
 import Phaser from 'phaser';
-import { ATTR_KEYS, ATTR_NAMES, CLASSES, ELITE, ENEMIES, INV_SIZE, RARITY, REVIVE_TIME, SHOP, SHOP_TYPES, SNAPSHOT_EVERY, TICK_RATE, itemName, itemStatText } from '../game/data';
+import { ATTR_KEYS, ATTR_NAMES, CLASSES, ELITE, ENEMIES, INV_SIZE, RARITY, REVIVE_TIME, SHOP, SHOP_TYPES, SNAPSHOT_EVERY, TICK_RATE, TILE, VIEW_W, itemName, itemStatText } from '../game/data';
 import { gameLevel } from '../game/world';
 import { lineOfSight } from '../game/physics';
 import type { Level } from '../game/level';
@@ -77,6 +77,9 @@ export class GameScene extends Phaser.Scene {
   private device: Device = 'kbm';
   private me?: Player;
   private lastSnap?: Snapshot;
+  /** 참가자 혼자 끝난 게임 (내가 나갔거나 방장 연결이 끊김): 마지막 스냅샷으로 결과 화면을 보여 준다 */
+  private localEnd: { snap: Snapshot; note: string } | null = null;
+  private quitBtn!: Phaser.GameObjects.Text;
   // 키보드·마우스 조준 방식: 마우스를 움직이면 'mouse', 방향키를 누르면 'move'(이동 방향으로 공격)
   private aimMode: 'mouse' | 'move' = 'move';
   private lastAim = 0;
@@ -107,6 +110,15 @@ export class GameScene extends Phaser.Scene {
     this.map = new MapView(this, level, s.myId);
     this.hud = new Hud(this, this.world, s.myId, (attr) => this.allocate(attr), (idx) => this.useSlot(idx), this.map.top);
     this.effects = new Effects(this, this.world, s.myId);
+    // 끝내기 (오른쪽 위): 방장·혼자는 모두의 게임을 끝내고, 참가자는 혼자 나간다. 어느 쪽이든 결과 화면을 보여 준다
+    this.quitBtn = makeText(this, VIEW_W - 8, 8, '⏹ 끝내기', 13).setOrigin(1, 0).setDepth(130).setAlpha(0.8)
+      .setPadding(8, 4, 8, 4).setBackgroundColor('#1a2336').setInteractive({ useHandCursor: true });
+    this.quitBtn.on('pointerdown', () => this.quit());
+    s.onHostLost = () => {
+      if (!this.lastSnap) return false;
+      this.localEnd = { snap: { ...this.lastSnap, status: 'ended' }, note: '방장과의 연결이 끊어졌습니다' };
+      return true;
+    };
     this.shopPanel = new ShopPanel(this, (idx) => this.buy(idx));
     this.charMenu = new CharMenu(this, (attr) => this.allocate(attr), (idx) => this.useSlot(idx), (from, idx) => this.moveItem(from, idx), (from, idx) => this.dropItem(from, idx));
     this.forgePanel = new ForgePanel(this, (picks, random) => this.forge(picks, random));
@@ -153,6 +165,8 @@ export class GameScene extends Phaser.Scene {
         });
         this.events.once('shutdown', () => panel.destroy());
       }
+      // 개발용 시작 구역: 그 구역 입구에서 (앞 구역 문은 열고 몬스터는 치운다)
+      if (import.meta.env.DEV && (s.startZone ?? 1) > 1) this.sim.devStartZone(s.startZone!);
       // 개발용 시작 레벨: 모든 플레이어를 그 레벨로
       if (import.meta.env.DEV && (s.startLevel ?? 1) > 1) for (const p of s.players) this.sim.setLevel(p.id, s.startLevel!);
       s.onRemoteInput = (id, input) => this.sim!.setInput(id, input);
@@ -179,6 +193,14 @@ export class GameScene extends Phaser.Scene {
   update(_time: number, deltaMs: number) {
     if (!this.ready) return; // 모델을 다 불러올 때까지 대기
     const dt = Math.min(deltaMs / 1000, 0.1);
+    if (this.localEnd) {
+      // 참가자 혼자 끝남: 게임은 멈춘 채 결과 화면만 (메뉴로 나가기)
+      this.pad.update(this.input.gamepad?.pad1);
+      this.quitBtn.setVisible(false);
+      this.effects.showEnd(this.localEnd.snap, this.session.leaveToMenu, this.localEnd.note, '처음 메뉴로 돌아가기');
+      if (Phaser.Input.Keyboard.JustDown(this.keys.ENTER) || this.pad.pressed(BTN.A)) this.session.leaveToMenu();
+      return;
+    }
     this.pad.update(this.input.gamepad?.pad1);
     if (this.pad.touched) this.device = 'pad';
     if (this.touch?.touched) this.device = 'touch';
@@ -215,7 +237,7 @@ export class GameScene extends Phaser.Scene {
     this.updateMenus(snap);
     this.world.update(snap, this.session.myId, dt);
     this.drawOverlays(snap);
-    this.hud.update(snap, this.me);
+    this.hud.update(snap, this.me, !!this.me && this.me.y > this.level.mapH * TILE);
     this.map.update(this.hud.g, snap, this.keys.TAB.isDown,
       Phaser.Input.Keyboard.JustDown(this.keys.M) || this.pad.pressed(BTN.VIEW) || !!this.touch?.consume('map'));
     for (const e of events) this.effects.play(e, snap, this.me);
@@ -224,12 +246,24 @@ export class GameScene extends Phaser.Scene {
     this.updateStory(snap);
     this.story.update(dt, this.device);
 
-    // 승리하면 엔딩 이야기를 다 본(또는 건너뛴) 뒤에 결과 화면을 띄운다
+    // 승리하면 엔딩 이야기를 다 본(또는 건너뛴) 뒤에 결과 화면을 띄운다. 전멸·도중에 끝냄은 바로
     if (snap.status !== 'playing' && (snap.status !== 'victory' || this.endingDone)) {
       const canReturn = this.session.role !== 'client';
-      this.effects.showEnd(snap, canReturn ? this.session.backToLobby : null);
+      this.quitBtn.setVisible(false);
+      this.effects.showEnd(snap, canReturn ? this.session.backToLobby : null, snap.status === 'ended' ? (canReturn ? '게임을 끝냈습니다' : '방장이 게임을 끝냈습니다') : '');
       if (canReturn && (Phaser.Input.Keyboard.JustDown(this.keys.ENTER) || this.pad.pressed(BTN.A))) this.session.backToLobby();
     }
+  }
+
+  /** 끝내기 버튼: 한 번 더 묻고, 방장·혼자는 게임을 끝내고(모두 결과 화면), 참가자는 연결을 끊고 혼자 결과 화면 */
+  private quit() {
+    if (this.effects.ended || this.localEnd || !this.lastSnap) return;
+    const client = this.session.role === 'client';
+    if (!window.confirm(client ? '게임에서 나갈까요? (다시 들어올 수 없어요)' : '게임을 끝낼까요? 모두의 게임이 끝나고 결과 화면이 나옵니다.')) return;
+    if (client) {
+      this.session.disconnect();
+      this.localEnd = { snap: { ...this.lastSnap, status: 'ended' }, note: '게임에서 나왔습니다' };
+    } else this.sim?.endEarly();
   }
 
   /** 이벤트·창 열고 닫기·스토리 쪽 넘김·승패에 맞는 효과음 */
@@ -248,7 +282,8 @@ export class GameScene extends Phaser.Scene {
     }
     if (s.status !== 'playing' && !this.endSoundPlayed) {
       this.endSoundPlayed = true;
-      sfx.play(s.status === 'victory' ? 'victory' : 'defeat', { volume: 0.8, vary: 0 });
+      if (s.status === 'ended') sfx.play('ui2', { volume: 0.6 });
+      else sfx.play(s.status === 'victory' ? 'victory' : 'defeat', { volume: 0.8, vary: 0 });
     }
   }
 

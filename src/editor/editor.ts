@@ -8,7 +8,7 @@ import { PROPS, PROP_KINDS, type PropGroup, type PropKind } from '../game/props'
 const SHOP_LETTER = { heal: '회', attack: '공', defense: '방', forge: '대' } as const;
 /** 상점 도구로 누를 때마다 바뀌는 순서 (대장간 포함) */
 const SHOP_CYCLE = [...SHOP_ORDER, 'forge'] as const;
-import { mapFromLevel, stringifyMap, validateMap, zoneAt, type MapFile, type SpawnType } from '../game/mapfile';
+import { DUNGEON_ROWS, dungeonArena, mapFromLevel, stringifyMap, validateMap, zoneAt, type MapFile, type SpawnType } from '../game/mapfile';
 import { DRAFT_KEY } from '../game/world';
 import { View3D } from './view3d';
 
@@ -17,7 +17,7 @@ import { View3D } from './view3d';
 /** 지형 칠하기 도구: 바닥(풀) · 길 · 돌바닥 · 나무(벽) · 바위(벽) */
 type TerrainTool = 'grass' | 'road' | 'stone' | 'tree' | 'rock';
 /** 배치 도구: 선택·이동 · 지우기 · 몬스터 종류 · 상점 · 문 · 출발점 · 흑룡 · 장식 */
-type ObjectTool = 'select' | 'erase' | SpawnType | 'shop' | 'gate' | 'start' | 'boss' | 'prop';
+type ObjectTool = 'select' | 'erase' | SpawnType | 'shop' | 'gate' | 'start' | 'boss' | 'prop' | 'dungeon';
 /** 편집기 도구 전체 */
 type Tool = TerrainTool | ObjectTool;
 
@@ -67,6 +67,7 @@ const OBJECTS: { id: ObjectTool; name: string; key: string; color: string }[] = 
   { id: 'prop', name: '장식 (아래에서 고르기)', key: 'H', color: '#c8a070' },
   { id: 'start', name: '출발점', key: 'Z', color: '#40e0ff' },
   { id: 'boss', name: '흑룡', key: 'B', color: '#c01818' },
+  { id: 'dungeon', name: '던전 문 (투기장은 그 구역 아래에 생긴다)', key: 'P', color: '#ff6a40' },
 ];
 
 
@@ -82,7 +83,7 @@ let brush = 1;
 const view = { ox: -20, oy: -20, z: 9 }; // 화면 = 타일 * z - o
 let hover = { x: -1, y: -1, fx: 0, fy: 0 };
 /** 고른(또는 끌고 있는) 물건: 종류와 맵 파일 목록에서의 번호 (출발점·흑룡은 하나뿐이라 0) */
-type Picked = { kind: 'spawn' | 'shop' | 'start' | 'boss' | 'prop'; index: number } | { kind: 'gate'; index: number };
+type Picked = { kind: 'spawn' | 'shop' | 'start' | 'boss' | 'prop' | 'dungeon'; index: number } | { kind: 'gate'; index: number };
 let propKind: PropKind = 'barrel'; // 장식 도구로 놓을 종류
 let selected: Picked | null = null;
 let dragging: Picked | null = null;
@@ -235,6 +236,7 @@ function pick(fx: number, fy: number): Picked | null {
   const near = (x: number, y: number, r: number) => Math.hypot(fx - (x + 0.5), fy - (y + 0.5)) <= r;
   if (near(map.boss.x, map.boss.y, 0.9)) return { kind: 'boss', index: 0 };
   if (near(map.start.x, map.start.y, 0.6)) return { kind: 'start', index: 0 };
+  if (map.dungeon && near(map.dungeon.x, map.dungeon.y, 0.8)) return { kind: 'dungeon', index: 0 };
   let best = -1, bestD = 0.6;
   map.spawns.forEach((s, i) => {
     const d = Math.hypot(fx - (s.x + 0.5), fy - (s.y + 0.5));
@@ -255,6 +257,7 @@ function remove(p: Picked) {
   else if (p.kind === 'shop') map.shops.splice(p.index, 1);
   else if (p.kind === 'gate') map.gates.splice(p.index, 1);
   else if (p.kind === 'prop') map.props!.splice(p.index, 1);
+  else if (p.kind === 'dungeon') delete map.dungeon;
   else return false; // 출발점·보스는 지울 수 없다 (옮기기만)
   selected = null;
   return true;
@@ -280,9 +283,9 @@ function toggleGate(x: number, y: number) {
 
 function place(x: number, y: number) {
   if (tool === 'gate') return toggleGate(x, y);
-  if (tool === 'start' || tool === 'boss') {
+  if (tool === 'start' || tool === 'boss' || tool === 'dungeon') {
     if (blocked(x, y)) return toast('막힌 칸입니다');
-    map[tool] = { x, y };
+    map[tool] = { x, y }; // 던전 문은 하나뿐이라 새로 놓으면 옮겨진다
     return;
   }
   if (tool === 'shop') {
@@ -373,6 +376,34 @@ function draw() {
     ctx.stroke();
   }
 
+  // 던전 투기장 미리보기 (맵 아래, 게임이 자동으로 만든다. 고칠 수 없고 던전 문 위치를 따라 움직인다)
+  const arena = dungeonArena(map);
+  if (arena && map.dungeon) {
+    const { cx, cy, r } = arena;
+    for (let y = map.h; y < map.h + DUNGEON_ROWS; y++)
+      for (let x = cx - r - 2; x <= cx + r + 2; x++) {
+        const d = Math.hypot(x - cx, y - cy);
+        if (d > r + 1.6) continue;
+        ctx.fillStyle = d <= r ? '#8a8a94' : '#4a4a52';
+        ctx.fillRect(sx(x), sy(y), z + 0.5, z + 0.5);
+      }
+    ctx.strokeStyle = '#ff6a40';
+    ctx.setLineDash([6, 4]);
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(sx(map.dungeon.x + 0.5), sy(map.dungeon.y + 0.5));
+    ctx.lineTo(sx(cx + 0.5), sy(cy + r - 1.5)); // 문 → 들어가면 서는 곳 (남쪽 끝)
+    ctx.stroke();
+    ctx.setLineDash([]);
+    label('던전 투기장 (자동 생성 · 던전 문을 옮기면 따라 움직임)', sx(cx + 0.5), sy(map.h) + z * 0.2 + 12, 12, '#ff9a70', true);
+    if (z >= 10) {
+      // 작게 보면 글자가 겹치므로 크게 볼 때만
+      label('입구', sx(cx + 0.5), sy(cy + r - 1.5), 11, '#ffd0b0', true);
+      label('출구 (클리어 후)', sx(cx + 0.5), sy(cy - r + 2.5), 11, '#a0d8ff', true);
+      label('보상 상자', sx(cx + 0.5), sy(cy + 0.5), 11, '#ffd040', true);
+    }
+  }
+
   // 구역 경계와 이름
   ctx.font = '12px sans-serif';
   ctx.textBaseline = 'bottom';
@@ -460,6 +491,16 @@ function draw() {
   ctx.lineWidth = 2;
   ctx.stroke();
   label('흑룡', bx, by, Math.max(10, z * 0.7), '#fff');
+  // 던전 문: 주황 고리
+  if (map.dungeon) {
+    const dx = sx(map.dungeon.x + 0.5), dy = sy(map.dungeon.y + 0.5);
+    ctx.strokeStyle = selected?.kind === 'dungeon' ? '#fff' : '#ff6a40';
+    ctx.lineWidth = Math.max(2, z * 0.25);
+    ctx.beginPath();
+    ctx.arc(dx, dy, z * 0.7, 0, Math.PI * 2);
+    ctx.stroke();
+    label('던전', dx, dy - z * 1.1, 11, '#ff9a70', true);
+  }
 
   // 커서: 칠하기 도구는 붓 크기, 나머지는 칸 하나
   if (inMap(hover.x, hover.y) && !panning) {
@@ -515,6 +556,7 @@ function describe(p: Picked | null): string {
     return SPAWN_STYLE[s.t].name;
   }
   if (p.kind === 'shop') return SHOP_TYPES[map.shops[p.index].type ?? 'attack'].name;
+  if (p.kind === 'dungeon') return '던전 문 (닿으면 이 구역 아래의 투기장으로)';
   if (p.kind === 'prop') {
     const pr = map.props![p.index];
     return `장식: ${PROPS[pr.t].name}${PROPS[pr.t].block ? ' (길 막음)' : ''}`;
@@ -583,7 +625,7 @@ window.addEventListener('mousemove', (e) => {
     if (d.kind === 'spawn') Object.assign(map.spawns[d.index], { x: t.x, y: t.y });
     else if (d.kind === 'shop') Object.assign(map.shops[d.index], { x: t.x, y: t.y });
     else if (d.kind === 'prop' && propAt(t.x, t.y) < 0) Object.assign(map.props![d.index], { x: t.x, y: t.y });
-    else if (d.kind === 'start' || d.kind === 'boss') map[d.kind] = { x: t.x, y: t.y };
+    else if (d.kind === 'start' || d.kind === 'boss' || d.kind === 'dungeon') map[d.kind] = { x: t.x, y: t.y };
     changed();
   } else draw();
   const zone = inMap(t.x, t.y) ? (t.x >= map.arenaTx ? '보스 방' : `${zoneAt(map.zoneStartsTx, t.x)}구역`) : '';
@@ -630,13 +672,18 @@ function zoomAt(mx: number, my: number, f: number) {
 function clampView() {
   const W = cv.clientWidth, H = cv.clientHeight, margin = 80;
   view.ox = Math.max(-W + margin, Math.min(map.w * view.z - margin, view.ox));
-  view.oy = Math.max(-H + margin, Math.min(map.h * view.z - margin, view.oy));
+  view.oy = Math.max(-H + margin, Math.min(fullH() * view.z - margin, view.oy));
+}
+
+/** 화면에 보여 주는 세로 칸 수: 던전 문이 있으면 맵 아래에 붙는 던전 투기장 줄까지 */
+function fullH() {
+  return map.h + (map.dungeon ? DUNGEON_ROWS : 0);
 }
 
 // 더블클릭: 그 자리를 3D로 보기
 cv.addEventListener('dblclick', (e) => {
   const t = toTile(e);
-  if (inMap(t.x, t.y)) open3d(t.x, t.y);
+  if (t.x >= 0 && t.x < map.w && t.y >= 0 && t.y < fullH()) open3d(t.x, t.y); // 아래의 던전 투기장도
 });
 
 window.addEventListener('keydown', (e) => {
@@ -836,7 +883,7 @@ function toggle3d() {
   } else {
     // 2D 화면 가운데를 3D로
     const cx = Math.floor((view.ox + cv.clientWidth / 2) / view.z), cy = Math.floor((view.oy + cv.clientHeight / 2) / view.z);
-    open3d(Math.max(0, Math.min(map.w - 1, cx)), Math.max(0, Math.min(map.h - 1, cy)));
+    open3d(Math.max(0, Math.min(map.w - 1, cx)), Math.max(0, Math.min(fullH() - 1, cy))); // 아래의 던전 투기장도 3D로 볼 수 있다
   }
 }
 $('view3d').onclick = toggle3d;

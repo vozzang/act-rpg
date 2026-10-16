@@ -22,6 +22,7 @@ export const T_ROCK = 2;
 export const T_SHOP = 3; // 상점 가판대 (지나갈 수 없고, 그림은 렌더러가 따로 그린다)
 export const T_GATE = 4; // 구역 출구의 철문. 그 구역의 문지기를 쓰러뜨리면 바닥(T_FLOOR)으로 바뀐다
 export const T_PROP = 5; // 길을 막는 장식 물건(통·천막·울타리 등)이 놓인 칸. 그림은 렌더러가 Level.props로 그린다
+export const T_VOID = 6; // 아무것도 없는 막힌 칸 (맵 아래에 붙인 던전 줄의 빈 곳). 그리지 않는다
 
 // 바닥 무늬 (지나갈 수 있음, 그리기 전용)
 export const G_GRASS = 0;
@@ -73,6 +74,19 @@ export interface Level {
   gates: Gate[]; // [z - 1] = z구역 출구
   props: PropPlacement[]; // 맵 편집기로 놓은 장식 (타일 좌표)
   start: { x: number; y: number }; // 출발점 (월드 좌표)
+  mapH: number; // 맵 파일의 세로 칸 수 (h는 여기에 아래쪽 던전 줄을 더한 값)
+  dungeon?: DungeonArena; // 던전 (맵 파일에 던전 문이 있을 때만)
+}
+
+/**
+ * 던전: 맵 아래쪽에 따로 붙인 둥근 투기장. 걸어서는 갈 수 없고 던전 문(portal)으로만 들어간다.
+ * 좌표는 모두 월드 좌표(px). 투기장 x는 문이 있는 구역 안이라 구역 판정(배율·배경)은 그 구역을 따른다.
+ */
+export interface DungeonArena {
+  portal: { x: number; y: number }; // 들어가는 문 (맵 위)
+  center: { x: number; y: number }; // 투기장 가운데 (보상 상자 자리)
+  radius: number; // 투기장 반지름 (걸을 수 있는 둥근 바닥)
+  entry: { x: number; y: number }; // 들어오면 서는 곳 (남쪽 끝). 클리어하면 여기에 나가는 문이 열린다
 }
 
 /** 시드로 같은 난수열을 만드는 간단한 난수 생성기 (0~1) */
@@ -300,7 +314,7 @@ export function buildLevel(seed: number): Level {
   spawns.push({ kind: 'boss', x: arenaCenter.x + TILE * 4, y: arenaCenter.y, zone: zones });
 
   return {
-    w, h, tiles, ground, spawns, zoneStartsTx, arenaTx, arenaCenter, shops, gates, props: [],
+    w, h, mapH: h, tiles, ground, spawns, zoneStartsTx, arenaTx, arenaCenter, shops, gates, props: [],
     start: { x: world(startTile.x), y: world(startTile.y) },
   };
 }

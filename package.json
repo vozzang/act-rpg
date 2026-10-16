@@ -12,6 +12,7 @@
   "dependencies": {
     "peerjs": "^1.5.5",
     "phaser": "^3.90.0",
+    "qrcode-generator": "1.4.4",
     "three": "^0.170.0"
   },
   "devDependencies": {

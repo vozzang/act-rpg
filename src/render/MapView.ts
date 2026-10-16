@@ -2,7 +2,7 @@
 // 3D 카메라와 같은 방향(북쪽이 위, 맵 진행 방향이 오른쪽)으로 위에서 내려다본 모습이다.
 import Phaser from 'phaser';
 import { CLASSES, ENEMIES, SHOP_TYPES, TILE, VIEW_H, VIEW_W, ZONE_NAMES, ZONE_PALETTE } from '../game/data';
-import { G_ROAD, G_STONE, T_FLOOR, T_GATE, zoneOfTx, type Level } from '../game/level';
+import { G_ROAD, G_STONE, T_FLOOR, T_GATE, T_VOID, zoneOfTx, type Level } from '../game/level';
 import type { Snapshot } from '../game/types';
 import { hex, makeText } from './ui';
 
@@ -21,10 +21,11 @@ export class MapView {
   constructor(private scene: Phaser.Scene, private level: Level, private myId: string) {
     const { w, h, tiles, ground } = level;
     const g = scene.make.graphics({}, false);
-    g.fillStyle(0x000000, 0.55).fillRect(0, 0, w * SCALE, h * SCALE);
+    g.fillStyle(0x000000, 0.55).fillRect(0, 0, w * SCALE, level.mapH * SCALE); // 맵 아래에 붙인 던전 줄은 투기장만 그린다
     for (let ty = 0; ty < h; ty++)
       for (let tx = 0; tx < w; tx++) {
         const t = tiles[ty * w + tx];
+        if (t === T_VOID) continue;
         const gr = ground[ty * w + tx];
         // 구역별 색 (ZONE_PALETTE). 미니맵은 3D보다 조금 어둡게
         const pal = ZONE_PALETTE[zoneOfTx(level, tx) - 1];

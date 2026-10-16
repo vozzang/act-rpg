@@ -569,6 +569,18 @@ export class SkillFx {
     this.ring(x, z, 0.3, 1.2, 0x90e8ff, 0.3);
   }
 
+  /** 빛 알갱이 하나 (다른 화면 코드가 쓰는 입구: 던전 문 등). 위치·속도는 3D 단위 */
+  emitGlow(x: number, y: number, z: number, vx: number, vy: number, vz: number, life: number, color: number, size: number) {
+    this.glow.emit(x, y, z, vx, vy, vz, life, color, size);
+  }
+
+  /** 순간이동한 자리: 빛 기둥과 고리 */
+  warp(wx: number, wy: number) {
+    const x = wx * U, z = wy * U;
+    for (let i = 0; i < 30; i++) this.glow.emit(x + rand(-0.3, 0.3), rand(0, 0.3), z + rand(-0.3, 0.3), 0, rand(2, 4), 0, rand(0.4, 0.7), i % 2 ? 0xff8a50 : 0xffe0b0, rand(0.1, 0.2));
+    this.ring(x, z, 0.2, 1.4, 0xffa060, 0.4);
+  }
+
   /** 유니크 무기 효과가 걸린 자리 */
   procHit(effect: WeaponEffect, wx: number, wy: number) {
     const x = wx * U, z = wy * U;

@@ -1,15 +1,15 @@
 // 게임 시뮬레이션. 호스트에서만 실행되고, 클라이언트는 스냅샷을 받아 그리기만 한다.
 import {
   AGGRO_RANGE, BAG_SIZE, FORGE, ITEM_DROP_MULT, TICK_RATE, ATTR_EFFECT, ATTR_KEYS, CLASSES, ELITE, ELITES, ENEMIES, GATE_KEEPERS, FOOD, INV_SIZE, POINTS_PER_LEVEL, REVIVE_TIME, SHOP, SKILL, TILE, ZONE_NAMES,
-  deriveStats, makeItem, partyHpScale, skillMpCost, canEquip, ITEM_LIST, UNIQUE_DROP, WEAPON_EFFECTS, itemFromDef, PASSIVE, arrowCount, ironSkinRate, lifestealRate, manaFlowRate, type EliteDef, shopStock, matchRecipe, recipeItem, randomForgeRarity, totalAttrs, xpForLevel, zoneScale, type AttackDef,
+  deriveStats, makeItem, partyHpScale, skillMpCost, canEquip, DUNGEON, ITEM_LIST, UNIQUE_DROP, WEAPON_EFFECTS, itemFromDef, PASSIVE, arrowCount, ironSkinRate, lifestealRate, manaFlowRate, type EliteDef, shopStock, matchRecipe, recipeItem, randomForgeRarity, totalAttrs, xpForLevel, zoneScale, type AttackDef,
 } from './data';
-import { mulberry32, openGate, zoneOfTx, type Level } from './level';
+import { blockedAt, mulberry32, openGate, zoneOfTx, type Level } from './level';
 import { gameLevel } from './world';
 import { NavField, angleDiff, approach, dist, lineOfSight, moveBody, pointBlocked, pushBody } from './physics';
 import {
   EMPTY_INPUT,
   type AttrKey, type Drop, type FoodKind, type Item, type Enemy, type EnemyKind, type EnemyView, type ProjectileView, type GameEvent, type GameStatus, type InputState,
-  type LobbyPlayer, type Player, type Projectile, type Shop, type Snapshot,
+  type DungeonState, type LobbyPlayer, type Player, type Projectile, type Shop, type Snapshot,
 } from './types';
 
 /** 투사체를 쏘는 기본 공격 설정 (궁수·마법사) */
@@ -46,12 +46,15 @@ export class Sim {
   private gateNoticeAt = new Map<string, number>(); // 닫힌 문 안내를 너무 자주 띄우지 않도록
   private leechAcc = new Map<string, number>(); // 흡혈로 모은 소수점 회복량 (플레이어별)
   private uniquesDropped = new Set<string>(); // 이번 판에 이미 나온 유니크 무기 (한 판에 하나씩)
+  /** 던전 진행 (맵에 던전 문이 없으면 null). wave: 나온 웨이브 수, timer: 다음 웨이브까지 남은 시간 */
+  dungeon: { state: DungeonState; wave: number; timer: number; cleared: boolean } | null = null;
   private endTimer = 0;
   private pendingStatus: GameStatus | null = null;
 
   /** seed는 떨어지는 물건 같은 운에만 쓴다. 맵은 모두 같은 맵(gameLevel) */
   constructor(seed: number, lobby: LobbyPlayer[], level: Level = gameLevel()) {
     this.level = level;
+    if (level.dungeon) this.dungeon = { state: 'open', wave: 0, timer: 0, cleared: false };
     this.rng = mulberry32(seed ^ 0x9e3779b9);
     this.gates = this.level.gates.map(() => false);
     lobby.forEach((lp, i) => this.players.push(this.createPlayer(lp, i)));
@@ -106,6 +109,7 @@ export class Sim {
       atkCd: 0, atkAnim: 0, skillCds: [0, 0, 0, 0], dashTime: 0, dashSkill: 0, dashHits: [],
       guard: 0, guardReduce: 0, atkBuff: 0, chill: 0, mp: 0,
       invuln: 0, dead: false, revive: 0, kills: 0,
+      record: { xp: 0, gold: 0, dmg: 0, taken: 0, downs: 0, revives: 0, eliteKills: 0 },
     };
     this.recalcStats(p);
     p.hp = p.stats.maxHp;
@@ -179,6 +183,39 @@ export class Sim {
   }
 
   /**
+   * 개발용: z구역 입구에서 시작한다 (개발 서버 로비의 '시작 구역'). 앞 구역들의 문은 열고 그 구역 몬스터는 치운다.
+   * 모든 플레이어를 앞 구역 출구 문 바로 뒤(이 구역 입구)에 둔다.
+   */
+  devStartZone(z: number) {
+    const zones = this.level.zoneStartsTx.length;
+    const zone = Math.max(1, Math.min(zones, Math.round(z)));
+    if (zone <= 1) return;
+    for (let i = 0; i < zone - 1; i++) {
+      if (this.gates[i]) continue;
+      this.gates[i] = true;
+      openGate(this.level, i);
+    }
+    this.enemies = this.enemies.filter((e) => e.kind === 'boss' || e.zone >= zone);
+    // 입구 자리: 앞 구역 출구 문(이제 열림) 오른쪽으로 몇 칸, 문 높이 가운데에서 가까운 걸을 수 있는 칸
+    const g = this.level.gates[zone - 2];
+    const midY = Math.round((g.ty0 + g.ty1) / 2);
+    let spot = { tx: g.tx, ty: midY };
+    search: for (let dx = 2; dx <= 8; dx++)
+      for (const dy of [0, -1, 1, -2, 2, -3, 3]) {
+        if (!blockedAt(this.level, g.tx + dx, midY + dy) && !blockedAt(this.level, g.tx + dx + 1, midY + dy)) {
+          spot = { tx: g.tx + dx, ty: midY + dy };
+          break search;
+        }
+      }
+    this.players.forEach((p, i) => {
+      p.x = (spot.tx + 0.5) * TILE + (i % 2) * 20;
+      p.y = (spot.ty + 0.5) * TILE + (Math.floor(i / 2) - 0.5) * 20;
+      if (pointBlocked(this.level, p.x, p.y)) [p.x, p.y] = [(spot.tx + 0.5) * TILE, (spot.ty + 0.5) * TILE];
+    });
+    for (const nav of this.navs.values()) nav.originTx = -1; // 문 자리가 길이 됐다
+  }
+
+  /**
    * 개발용: 아이템 상자(where 'inv') 또는 가방('bag')의 idx 칸에 목록의 장비(key)를 넣는다. key가 null이면 그 칸을 비운다.
    * 원래 칸에 있던 것은 사라진다. 개발 서버의 장비 시험 창(DevItemPanel)에서만 부른다.
    */
@@ -208,6 +245,7 @@ export class Sim {
     if (this.tick % NAV_EVERY === 1) this.updateNav();
     for (const p of this.players) this.updatePlayer(p, dt);
     this.updateZone();
+    this.updateDungeon(dt);
 
     for (const e of this.enemies) {
       if (!e.active) {
@@ -235,6 +273,11 @@ export class Sim {
     }
 
     for (const p of this.players) this.prevInputs.set(p.id, this.inputs.get(p.id) ?? EMPTY_INPUT);
+  }
+
+  /** 게임을 도중에 끝낸다 (방장·혼자 하기의 '끝내기'). 모두에게 결과 화면이 뜬다 */
+  endEarly() {
+    if (this.status === 'playing') this.status = 'ended';
   }
 
   private endWith(status: GameStatus, delay: number) {
@@ -581,7 +624,10 @@ export class Sim {
         const ratio = SKILL.heal.ratio * (1 + p.attrs.int * ATTR_EFFECT.intHeal);
         for (const o of this.players) {
           if (dist(p.x, p.y, o.x, o.y) > radius) continue;
-          if (o.dead) this.revivePlayer(o, ratio);
+          if (o.dead) {
+            p.record.revives++;
+            this.revivePlayer(o, ratio);
+          }
           else this.healPlayer(o, Math.round(o.stats.maxHp * ratio));
         }
         p.atkAnim = 0.3;
@@ -861,6 +907,7 @@ export class Sim {
 
   private gainXp(p: Player, amount: number) {
     p.xp += amount;
+    p.record.xp += amount;
     while (p.xp >= p.xpNext) {
       p.xp -= p.xpNext;
       p.level++;
@@ -888,6 +935,7 @@ export class Sim {
     const iron = p.cls === 'dwarf'; // 수호자 패시브 '강철 피부': 받는 피해 감소, 덜 밀려난다
     if (iron) scaled *= 1 - ironSkinRate(p.level);
     const dmg = Math.max(1, Math.round(scaled * 0.15), Math.round(scaled - p.stats.def * 0.5));
+    p.record.taken += Math.min(dmg, Math.max(0, p.hp));
     p.hp -= dmg;
     p.invuln = 0.7;
     const ang = Math.atan2(p.y - fromY, p.x - fromX);
@@ -899,6 +947,7 @@ export class Sim {
       p.hp = 0;
       p.dead = true;
       p.revive = 0;
+      p.record.downs++;
       this.events.push({ t: 'down', pid: p.id });
     }
   }
@@ -906,9 +955,12 @@ export class Sim {
   private updateRevive(dt: number) {
     for (const p of this.players) {
       if (!p.dead) continue;
-      const helper = this.players.some((o) => !o.dead && dist(o.x, o.y, p.x, p.y) < 44);
-      p.revive = helper ? p.revive + dt : Math.max(0, p.revive - dt);
-      if (p.revive >= REVIVE_TIME) this.revivePlayer(p, 0.4);
+      const helpers = this.players.filter((o) => !o.dead && dist(o.x, o.y, p.x, p.y) < 44);
+      p.revive = helpers.length ? p.revive + dt : Math.max(0, p.revive - dt);
+      if (p.revive >= REVIVE_TIME) {
+        for (const o of helpers) o.record.revives++;
+        this.revivePlayer(p, 0.4);
+      }
     }
   }
 
@@ -955,6 +1007,119 @@ export class Sim {
     for (const nav of this.navs.values()) nav.originTx = -1;
     const last = i === this.gates.length - 1;
     this.events.push({ t: 'banner', text: '문이 열렸다', sub: `${keeper} 처치! — ${last ? '이 너머에 흑룡이 기다린다' : `다음 → ${i + 2}구역 ${ZONE_NAMES[i + 1]}`}` });
+  }
+
+  // ─── 던전 ─────────────────────────────────────────
+
+  /** 투기장(맵 아래에 붙인 줄)에 있는지 */
+  private inDungeon(p: { y: number }) {
+    return p.y > this.level.mapH * TILE;
+  }
+
+  /** 순간이동 (던전 문). 떠난 자리와 도착한 자리에 빛 기둥 */
+  private warp(p: Player, x: number, y: number) {
+    this.events.push({ t: 'warp', x: Math.round(p.x), y: Math.round(p.y) });
+    p.x = x;
+    p.y = y;
+    p.vx = p.vy = 0;
+    this.events.push({ t: 'warp', x: Math.round(x), y: Math.round(y) });
+  }
+
+  /**
+   * 던전 진행: 문에 닿으면 투기장으로 → 사방에서 웨이브 → 다 물리치면 전설 상자와 나가는 문.
+   * 안에 들어간 사람이 모두 쓰러지면 실패 (쓰러진 채로 문 앞에 돌려보낸다). 성공이든 실패든 한 판에 한 번뿐.
+   */
+  private updateDungeon(dt: number) {
+    const d = this.level.dungeon, st = this.dungeon;
+    if (!d || !st || st.state === 'closed') return;
+    const N = DUNGEON.waves.length;
+
+    // 들어가기: 시작 전이거나 싸우는 중이면 문이 열려 있다 (늦게 온 동료도 들어갈 수 있다)
+    if (st.state === 'open' || st.state === 'active') {
+      for (const p of this.players) {
+        if (p.dead || this.inDungeon(p) || dist(p.x, p.y, d.portal.x, d.portal.y) > 26) continue;
+        this.warp(p, d.entry.x + (this.rng() - 0.5) * 60, d.entry.y);
+        if (st.state === 'open') {
+          st.state = 'active';
+          st.wave = 0;
+          st.timer = DUNGEON.startDelay;
+          this.events.push({ t: 'banner', text: '던전', sub: `사방에서 적이 몰려온다! ${N}웨이브를 모두 물리쳐라` });
+        }
+      }
+    }
+
+    const inside = this.players.filter((p) => this.inDungeon(p));
+    if (st.state === 'active') {
+      // 실패: 안에 들어간 사람이 모두 쓰러졌다
+      if (inside.length && inside.every((p) => p.dead)) {
+        for (const e of this.enemies) if (e.dungeon) e.hp = 0;
+        inside.forEach((p, i) => {
+          p.x = d.portal.x + 30 + i * 20;
+          p.y = d.portal.y + 10;
+          p.revive = 0;
+        });
+        st.state = 'closed';
+        this.events.push({ t: 'banner', text: '던전 실패', sub: '던전 문이 닫혔다' });
+        return;
+      }
+      if (this.enemies.some((e) => e.dungeon && e.hp > 0)) return;
+      st.timer -= dt;
+      if (st.timer > 0) return;
+      if (st.wave < N) this.spawnDungeonWave(d);
+      else this.clearDungeon(d, inside);
+    } else if (st.state === 'cleared') {
+      // 나가는 문(투기장 북쪽)에 닿으면 던전 문 옆으로. 모두 나오면 닫힌다
+      const exit = this.dungeonExit(d);
+      for (const p of inside) {
+        if (p.dead || dist(p.x, p.y, exit.x, exit.y) > 26) continue;
+        this.warp(p, d.portal.x + 40, d.portal.y + 10);
+      }
+      if (!this.players.some((p) => this.inDungeon(p))) st.state = 'closed';
+    }
+  }
+
+  /** 나가는 문 자리: 투기장 북쪽 끝 (들어온 남쪽 끝 반대편) */
+  private dungeonExit(d: NonNullable<Level['dungeon']>) {
+    return { x: d.center.x, y: d.center.y - d.radius + TILE * 2 };
+  }
+
+  /** 다음 웨이브: 투기장 둘레 사방에서 몬스터가 나온다 (마지막 웨이브는 중간보스와 함께) */
+  private spawnDungeonWave(d: NonNullable<Level['dungeon']>) {
+    const st = this.dungeon!;
+    const w = DUNGEON.waves[st.wave++];
+    const party = partyHpScale(this.players.length);
+    const ring = d.radius - TILE * 1.2;
+    const place = (e: Enemy, ang: number) => {
+      const r = ring * (0.8 + this.rng() * 0.2);
+      e.x = d.center.x + Math.cos(ang) * r;
+      e.y = d.center.y + Math.sin(ang) * r;
+      e.active = true;
+      e.dungeon = true;
+      e.aim = ang + Math.PI;
+      this.enemies.push(e);
+    };
+    for (let i = 0; i < w.count; i++) {
+      const kind = DUNGEON.pool[Math.floor(this.rng() * DUNGEON.pool.length)];
+      place(this.createEnemy(kind, DUNGEON.zone, party), (i / w.count) * Math.PI * 2 + (this.rng() - 0.5) * 0.3);
+    }
+    (w.elites ?? []).forEach((el, i) => {
+      place(this.createEnemy(el.kind, DUNGEON.zone, party, el), -Math.PI / 2 + (i - 0.5) * 1.2);
+      this.events.push({ t: 'banner', text: '', sub: `⚔ ${el.name} 등장!` });
+    });
+    this.events.push({ t: 'banner', text: `웨이브 ${st.wave} / ${DUNGEON.waves.length}`, sub: st.wave === DUNGEON.waves.length ? '마지막 웨이브! 중간보스가 나타났다' : '사방에서 적이 몰려온다!' });
+    st.timer = DUNGEON.waveGap;
+  }
+
+  /** 클리어: 가운데에 전설 장비 상자 하나, 쓰러진 동료는 일어나고, 북쪽에 나가는 문이 열린다 */
+  private clearDungeon(d: NonNullable<Level['dungeon']>, inside: Player[]) {
+    const st = this.dungeon!;
+    st.state = 'cleared';
+    st.cleared = true;
+    const pool = ITEM_LIST.filter((x) => x.tier === DUNGEON.rewardTier && x.rarity === 'legendary' && !x.from.includes('unique'));
+    const def = pool[Math.floor(this.rng() * pool.length)];
+    this.spawnDrop({ kind: 'item', item: itemFromDef(def, this.nextId++) }, d.center.x, d.center.y);
+    for (const p of inside) if (p.dead) this.revivePlayer(p, 0.3);
+    this.events.push({ t: 'banner', text: '던전 클리어!', sub: `전설 장비 ${def.name}이(가) 나타났다 — 북쪽 문으로 나갈 수 있다` });
   }
 
   /** 닫힌 문 앞에 선 플레이어에게 문지기를 쓰러뜨리라고 알려준다 */
@@ -1036,6 +1201,7 @@ export class Sim {
   private hitEnemy(e: Enemy, raw: number, crit: boolean, kx: number, ky: number, by: Player | null, stun = 0, proc = true): number {
     if (e.hp <= 0) return 0;
     const dmg = Math.max(1, Math.round(raw - e.def * 0.5));
+    if (by) by.record.dmg += Math.min(dmg, e.hp);
     e.hp -= dmg;
     e.hurt = 0.12;
     this.events.push({ t: 'dmg', x: e.x, y: e.y, v: dmg, crit, toPlayer: false });
@@ -1123,6 +1289,7 @@ export class Sim {
       const dps = kind === 'burn' ? (e.burn > 0 ? e.burnDps : 0) : e.bleed > 0 ? e.bleedDps * e.bleedStacks : 0;
       if (dps <= 0 || e.hp <= 0) continue;
       const dmg = Math.max(1, Math.round(dps * 0.5 - e.def * 0.5));
+      if (by) by.record.dmg += Math.min(dmg, e.hp);
       e.hp -= dmg;
       this.events.push({ t: 'dmg', x: e.x, y: e.y, v: dmg, crit: false, toPlayer: false, dot: kind });
       if (e.hp <= 0) this.killEnemy(e, by);
@@ -1130,7 +1297,10 @@ export class Sim {
   }
 
   private killEnemy(e: Enemy, by: Player | null) {
-    if (by) by.kills++;
+    if (by) {
+      by.kills++;
+      if (e.elite) by.record.eliteKills++;
+    }
     // 마법사 패시브 '마나 순환': 쓰러뜨린 마법사가 최대 MP의 일부를 회복한다
     if (by && !by.dead && by.cls === 'gnome') this.restoreMp(by, by.stats.maxMp * manaFlowRate(by.level), true);
     this.events.push({ t: 'kill', x: Math.round(e.x), y: Math.round(e.y), kind: e.kind, elite: !!e.elite });
@@ -1654,6 +1824,7 @@ export class Sim {
         // 협동 게임이라 돈은 경험치처럼 파티 전원이 같은 만큼 받는다 (근접 직업만 돈을 줍는 일이 없도록)
         for (const o of this.players) {
           o.gold += d.gold ?? 0;
+          o.record.gold += d.gold ?? 0;
           this.events.push({ t: 'gold', pid: o.id, x: o.x, y: o.y, v: d.gold ?? 0 });
         }
         return false;
@@ -1680,6 +1851,7 @@ export class Sim {
     const near = (x: number, y: number) => this.players.some((p) => dist(p.x, p.y, x, y) < SNAPSHOT_RADIUS);
     const r = (v: number) => Math.round(v * 10) / 10;
     const r2 = (v: number) => Math.round(v * 100) / 100;
+    const ended = this.status !== 'playing'; // 끝나면 결과 화면에 모두의 장비를 보여 주려고 상자·가방도 보낸다
     const boss = this.enemies.find((e) => e.kind === 'boss' && e.active);
     // 화면에 필요한 값만 골라 반올림해서 보낸다 (스냅샷은 초당 20번, 참가자마다 전송된다)
     const enemyView = (e: Enemy): EnemyView => ({
@@ -1695,7 +1867,7 @@ export class Sim {
       zone: this.zone,
       status: this.status,
       players: this.players.map((p) => ({
-        ...p, x: r(p.x), y: r(p.y), aim: r2(p.aim), dashHits: [], inv: viewer && p.id !== viewer ? [] : p.inv, bag: viewer && p.id !== viewer ? [] : p.bag,
+        ...p, x: r(p.x), y: r(p.y), aim: r2(p.aim), dashHits: [], inv: viewer && p.id !== viewer && !ended ? [] : p.inv, bag: viewer && p.id !== viewer && !ended ? [] : p.bag,
       })),
       enemies: this.enemies.filter((e) => e.active && near(e.x, e.y)).map(enemyView),
       projectiles: this.projectiles.filter((p) => near(p.x, p.y)).map(projView),
@@ -1707,6 +1879,7 @@ export class Sim {
       events,
       boss: boss ? { hp: boss.hp, maxHp: boss.maxHp } : null,
       gates: this.gates,
+      dungeon: this.dungeon && { state: this.dungeon.state, wave: this.dungeon.wave, waves: DUNGEON.waves.length, left: this.enemies.filter((e) => e.dungeon && e.hp > 0).length, cleared: this.dungeon.cleared },
     };
   }
 }

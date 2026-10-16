@@ -10,7 +10,7 @@ import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js
 import { isTouchDevice } from './TouchControls';
 import { SkillFx } from './SkillFx';
 import { CLASSES, ELITE, GATE_KEEPERS, RARITY, ZONE_PALETTE, TILE, VIEW_H, VIEW_W } from '../game/data';
-import { G_ROAD, G_STONE, T_FLOOR, T_GATE, T_PROP, T_SHOP, T_TREE, openGate, zoneOfTx, type Level } from '../game/level';
+import { G_ROAD, G_STONE, T_FLOOR, T_GATE, T_PROP, T_SHOP, T_TREE, T_VOID, openGate, zoneOfTx, type Level } from '../game/level';
 import { PROPS } from '../game/props';
 import type { ClassId, DropView, Rarity, EnemyKind, EnemyView, Player, ProjectileView, Snapshot } from '../game/types';
 
@@ -295,6 +295,7 @@ export class World3D {
   private drops = new Map<number, THREE.Object3D>();
   private npcs: Char[] = []; // 상인처럼 제자리에서 움직이기만 하는 캐릭터
   private gates: { group: THREE.Group; open: boolean; t: number }[] = []; // 구역 출구의 철문 (열리면 땅속으로 내려간다)
+  private portals: { enter: THREE.Group; exit: THREE.Group } | null = null; // 던전 문 (맵 위 입구, 투기장 북쪽 출구)
   /** 구역 날씨: 카메라가 그 구역 위에 있을 때 주변에 도는 입자 (3구역 눈, 5구역 불씨) */
   private weather: { pts: THREE.Points; zone: number; mode: 'fall' | 'rise' | 'drift' }[] = [];
   private camTarget = new THREE.Vector3();
@@ -480,7 +481,9 @@ export class World3D {
     let i = 0;
     for (let ty = 0; ty < h; ty++)
       for (let tx = 0; tx < w; tx++) {
-        m.makeTranslation(tx + 0.5, -0.2, ty + 0.5);
+        // 빈 칸(던전 줄의 투기장 밖)은 바닥을 그리지 않는다 (크기 0)
+        if (tiles[ty * w + tx] === T_VOID) m.makeScale(0, 0, 0);
+        else m.makeTranslation(tx + 0.5, -0.2, ty + 0.5);
         groundMesh.setMatrixAt(i, m);
         const g = ground[ty * w + tx];
         const pal = ZONE_PALETTE[zoneOfTx(this.level, tx) - 1];
@@ -505,6 +508,7 @@ export class World3D {
     for (let ty = 0; ty < h; ty++)
       for (let tx = 0; tx < w; tx++) {
         const t = tiles[ty * w + tx];
+        if (t === T_VOID) continue; // 빈 칸은 아무것도 그리지 않는다
         const r = hash(tx, ty), r2 = hash(ty, tx);
         const x = tx + 0.5, z = ty + 0.5;
         // 3구역은 설원: 눈 덮인 나무·바위와 눈 무더기·얼음 결정으로 바꿔 그린다
@@ -543,6 +547,8 @@ export class World3D {
           } else put(r2 < 0.5 ? 'plant' : 'patchGrass', x, z, r2 * Math.PI * 2, 0.9);
         }
       }
+
+    this.buildDungeon(put);
 
     // 상점: 가판대 앞(길이 있는 남쪽)에 상인. 회복은 초록 천막(옆에 가로등), 공격은 빨간 천막, 방어는 나무 가판대(옆에 수레)
     for (const sh of this.level.shops) {
@@ -747,6 +753,56 @@ export class World3D {
   }
 
   /** 문지기가 쓰러진 문은 맵에서 열고(길이 되게), 철문을 땅속으로 천천히 내린다 */
+  /** 던전 투기장 꾸미기(둘레의 화로·부서진 기둥)와 던전 문 두 개를 만든다 */
+  private buildDungeon(put: (k: ModelKey, x: number, z: number, rot?: number, s?: number, y?: number) => void) {
+    const d = this.level.dungeon;
+    if (!d) return;
+    const cx = d.center.x * U, cz = d.center.y * U, r = d.radius * U;
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2 + Math.PI / 8;
+      const x = cx + Math.cos(a) * (r - 0.9), z = cz + Math.sin(a) * (r - 0.9);
+      if (i % 2) put('svCampfire', x, z, a, 2.2); // 화로
+      else put('aColumnBroken', x, z, a, 1.1);
+    }
+    this.portals = {
+      enter: this.makePortal(d.portal.x * U, d.portal.y * U, 0xff5a30),
+      exit: this.makePortal(cx, (d.center.y - d.radius) * U + 2, 0x60c0ff),
+    };
+    this.portals.exit.visible = false;
+  }
+
+  /** 던전 문: 바닥에 빛나는 고리 두 개와 가운데 빛 웅덩이 (돌면서 빛 알갱이가 솟는다) */
+  private makePortal(x: number, z: number, color: number) {
+    const g = new THREE.Group();
+    g.position.set(x, 0.05, z);
+    const mat = (o: number) => new THREE.MeshBasicMaterial({ color, transparent: true, opacity: o, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false });
+    const ring1 = new THREE.Mesh(new THREE.TorusGeometry(0.75, 0.06, 8, 40).rotateX(Math.PI / 2), mat(0.9));
+    const ring2 = new THREE.Mesh(new THREE.TorusGeometry(0.55, 0.04, 8, 32, Math.PI * 1.5).rotateX(Math.PI / 2), mat(0.7));
+    const pool = new THREE.Mesh(new THREE.CircleGeometry(0.72, 32).rotateX(-Math.PI / 2), mat(0.35));
+    ring2.name = 'spin';
+    g.add(ring1, ring2, pool);
+    g.userData.color = color;
+    this.scene.add(g);
+    return g;
+  }
+
+  /** 던전 문 보이기: 입구는 던전이 열려 있는 동안(시작 전·싸우는 중), 출구는 클리어한 뒤 */
+  private syncPortals(s: Snapshot, dt: number) {
+    if (!this.portals || !s.dungeon) return;
+    const st = s.dungeon.state;
+    this.portals.enter.visible = st === 'open' || st === 'active';
+    this.portals.exit.visible = st === 'cleared';
+    for (const g of [this.portals.enter, this.portals.exit]) {
+      if (!g.visible) continue;
+      g.getObjectByName('spin')!.rotation.y += dt * 2.5;
+      g.scale.setScalar(1 + Math.sin(this.clock * 3) * 0.05);
+      if (Math.random() < dt * 25) {
+        const a = Math.random() * Math.PI * 2, rr = 0.2 + Math.random() * 0.5;
+        this.fx.emitGlow(g.position.x + Math.cos(a) * rr, 0.1, g.position.z + Math.sin(a) * rr, 0, 0.8 + Math.random(), 0, 0.9, g.userData.color as number, 0.12);
+      }
+    }
+  }
+
   private syncGates(s: Snapshot, dt: number) {
     this.gates.forEach((g, i) => {
       if (!g.open && s.gates?.[i]) {
@@ -850,6 +906,7 @@ export class World3D {
     this.syncProjectiles(s);
     this.syncDrops(s);
     this.syncGates(s, dt);
+    this.syncPortals(s, dt);
     this.fx.update(dt, s.players, s.enemies);
     for (const npc of this.npcs) npc.mixer.update(dt);
 

@@ -1,7 +1,7 @@
 // 맵 파일: 개발자가 맵 편집기(editor.html)로 만든 맵. 모든 플레이어가 같은 맵(src/game/maps/world.json)을 플레이한다.
 // 파일은 사람이 읽고 git으로 비교하기 쉽게 타일을 한 줄씩 문자열로 적는다. 좌표는 모두 타일 단위다.
 import { ELITES, GATE_KEEPERS, TILE } from './data';
-import { G_GRASS, G_ROAD, G_STONE, T_FLOOR, T_GATE, T_PROP, T_ROCK, T_SHOP, T_TREE, type Gate, type Level, type Spawn } from './level';
+import { G_GRASS, G_ROAD, G_STONE, T_FLOOR, T_GATE, T_PROP, T_ROCK, T_SHOP, T_TREE, T_VOID, type DungeonArena, type Gate, type Level, type Spawn } from './level';
 import { PROPS, type PropPlacement } from './props';
 import type { EnemyKind, ShopType } from './types';
 
@@ -31,9 +31,23 @@ export interface MapFile {
   gates: { x: number; y0: number; y1: number }[]; // 구역 출구 문 (x열의 y0~y1칸). 구역마다 하나
   spawns: { t: SpawnType; x: number; y: number }[]; // 몬스터 (종류와 칸)
   props?: PropPlacement[]; // 장식 물건 (길을 막는 것은 그 칸이 막힌다)
+  dungeon?: { x: number; y: number }; // 던전 문 칸 (없으면 던전도 없다). 투기장은 게임이 맵 아래에 붙여 만든다 (DUNGEON_ROWS)
 }
 
-const TILE_CH: Record<number, string> = { [T_FLOOR]: '.', [T_TREE]: 'T', [T_ROCK]: 'R', [T_SHOP]: '.', [T_GATE]: '.', [T_PROP]: '.' };
+/** 던전 투기장을 붙이려고 맵 아래에 더하는 줄 수, 투기장 반지름(칸) */
+export const DUNGEON_ROWS = 24;
+export const DUNGEON_RADIUS = 10;
+
+/** 던전 투기장의 가운데 칸(cx, cy)과 반지름(칸). 문이 있는 구역의 x 범위 안, 맵 바로 아래. 던전 문이 없으면 null (게임·맵 편집기가 함께 쓴다) */
+export function dungeonArena(m: MapFile): { cx: number; cy: number; r: number } | null {
+  if (!m.dungeon) return null;
+  const z = Math.min(zoneAt(m.zoneStartsTx, m.dungeon.x), m.zoneStartsTx.length);
+  const zx0 = m.zoneStartsTx[z - 1], zx1 = (m.zoneStartsTx[z] ?? m.arenaTx) - 1;
+  const r = DUNGEON_RADIUS;
+  return { cx: Math.max(zx0 + r + 2, Math.min(zx1 - r - 2, m.dungeon.x)), cy: m.h + Math.floor(DUNGEON_ROWS / 2), r };
+}
+
+const TILE_CH: Record<number, string> = { [T_FLOOR]: '.', [T_TREE]: 'T', [T_ROCK]: 'R', [T_SHOP]: '.', [T_GATE]: '.', [T_PROP]: '.', [T_VOID]: 'R' };
 const CH_TILE: Record<string, number> = { '.': T_FLOOR, T: T_TREE, R: T_ROCK };
 const GROUND_CH: Record<number, string> = { [G_GRASS]: '.', [G_ROAD]: '=', [G_STONE]: '#' };
 const CH_GROUND: Record<string, number> = { '.': G_GRASS, '=': G_ROAD, '#': G_STONE };
@@ -49,7 +63,8 @@ export function zoneAt(zoneStartsTx: number[], tx: number) {
 
 /** 자동 생성한 맵(Level)을 맵 파일로 (편집기의 '자동 생성으로 새로 만들기', 처음 world.json 만들기) */
 export function mapFromLevel(level: Level): MapFile {
-  const { w, h } = level;
+  const { w } = level;
+  const h = level.mapH; // 아래에 붙인 던전 줄은 맵 파일에 넣지 않는다
   const rows = (arr: Uint8Array, table: Record<number, string>) =>
     Array.from({ length: h }, (_, y) => Array.from(arr.subarray(y * w, y * w + w), (v) => table[v] ?? '.').join(''));
   const tile = (v: number) => Math.round((v / TILE - 0.5) * 2) / 2; // 월드 좌표 → 타일 좌표 (칸 가운데 = 정수)
@@ -67,15 +82,18 @@ export function mapFromLevel(level: Level): MapFile {
     gates: level.gates.map((g) => ({ x: g.tx, y0: g.ty0, y1: g.ty1 })),
     spawns: level.spawns.filter((s) => s.kind !== 'boss').map((s) => ({ t: keeperType(s), x: tile(s.x), y: tile(s.y) })),
     props: level.props.map((p) => ({ ...p })),
+    ...(level.dungeon ? { dungeon: { x: Math.floor(level.dungeon.portal.x / TILE), y: Math.floor(level.dungeon.portal.y / TILE) } } : {}),
   };
 }
 
 /** 맵 파일 → 게임이 쓰는 Level. 부를 때마다 새 배열을 만든다 (문이 열리면 tiles가 바뀌므로) */
 export function levelFromMap(m: MapFile): Level {
-  const { w, h } = m;
-  const tiles = new Uint8Array(w * h);
+  const { w } = m;
+  const mapH = m.h;
+  const h = m.dungeon ? mapH + DUNGEON_ROWS : mapH; // 던전이 있으면 아래에 투기장 줄을 붙인다
+  const tiles = new Uint8Array(w * h).fill(T_VOID);
   const ground = new Uint8Array(w * h);
-  for (let y = 0; y < h; y++)
+  for (let y = 0; y < mapH; y++)
     for (let x = 0; x < w; x++) {
       tiles[y * w + x] = CH_TILE[m.tiles[y]?.[x] ?? 'R'] ?? T_ROCK;
       ground[y * w + x] = CH_GROUND[m.ground[y]?.[x] ?? '.'] ?? G_GRASS;
@@ -112,8 +130,29 @@ export function levelFromMap(m: MapFile): Level {
       }
   const arenaCenter = n ? { x: (sx / n) * TILE, y: (sy / n) * TILE } : { x: world(m.boss.x), y: world(m.boss.y) };
 
+  // 던전 투기장: 문이 있는 구역의 x 범위 안, 맵 바로 아래에 둥근 돌바닥 (둘레는 바위 벽, 그 밖은 빈 칸)
+  let dungeon: DungeonArena | undefined;
+  const arena = dungeonArena(m);
+  if (m.dungeon && arena) {
+    const { cx, cy, r: R } = arena;
+    for (let y = mapH; y < h; y++)
+      for (let x = cx - R - 2; x <= cx + R + 2; x++) {
+        const d = Math.hypot(x - cx, y - cy);
+        if (d <= R) {
+          tiles[y * w + x] = T_FLOOR;
+          ground[y * w + x] = G_STONE;
+        } else if (d <= R + 1.6) tiles[y * w + x] = T_ROCK;
+      }
+    dungeon = {
+      portal: { x: world(m.dungeon.x), y: world(m.dungeon.y) },
+      center: { x: world(cx), y: world(cy) },
+      radius: R * TILE,
+      entry: { x: world(cx), y: world(cy + R - 2) },
+    };
+  }
+
   return {
-    w, h, tiles, ground, spawns, gates, props,
+    w, h, mapH, dungeon, tiles, ground, spawns, gates, props,
     zoneStartsTx: [...m.zoneStartsTx],
     arenaTx: m.arenaTx,
     arenaCenter,
@@ -155,6 +194,8 @@ export function validateMap(m: MapFile): string[] {
   keepers.forEach((n, i) => n === 0 && out.push(`${i + 1}구역에 문지기가 없습니다 (문이 열리지 않습니다)`));
 
   for (const s of m.shops) if (s.y > 0 && blocked(s.x, s.y + 1)) out.push(`상점(${s.x}, ${s.y}) 앞(아래 칸)이 막혀 있습니다`);
+  if (m.dungeon && blocked(m.dungeon.x, m.dungeon.y)) out.push('던전 문이 막힌 칸에 있습니다');
+  if (m.dungeon && m.dungeon.x >= m.arenaTx) out.push('던전 문이 보스 방 안에 있습니다');
 
   // 출발점에서 흑룡까지 걸어갈 수 있는지 (문은 열린 것으로 친다)
   const seen = new Uint8Array(m.w * m.h);
@@ -197,7 +238,8 @@ export function stringifyMap(m: MapFile): string {
   "shops": ${list(m.shops)},
   "gates": ${list(m.gates)},
   "spawns": ${list(m.spawns)},
-  "props": ${list(m.props ?? [])},
+  "props": ${list(m.props ?? [])},${m.dungeon ? `
+  "dungeon": ${line(m.dungeon)},` : ''}
   "tiles": ${list(m.tiles)},
   "ground": ${list(m.ground)}
 }

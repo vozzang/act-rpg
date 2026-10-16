@@ -2,6 +2,7 @@
 import Phaser from 'phaser';
 import { CLASSES, POINTS_PER_LEVEL, RARITY, VIEW_H, VIEW_W, itemName } from '../game/data';
 import type { GameEvent, Player, Snapshot } from '../game/types';
+import { downloadResultImage, playTime } from './resultImage';
 import { hex, makeText } from './ui';
 import type { World3D } from './World3D';
 
@@ -44,6 +45,9 @@ export class Effects {
       }
       case 'proc':
         w.fx.procHit(e.effect, e.x, e.y);
+        break;
+      case 'warp':
+        w.fx.warp(e.x, e.y);
         break;
       case 'dodge': {
         // 회피: 하늘색 '회피!'가 튀어나오고 몸 주위에 바람 고리
@@ -178,29 +182,99 @@ export class Effects {
     this.scene.tweens.add({ targets: t, y: y - 40, alpha: 0, duration, ease: 'Cubic.easeOut', onComplete: () => t.destroy() });
   }
 
+  /** 떠 있는 배너 글자 (결과 화면이 뜨면 지운다) */
+  private banners = new Set<Phaser.GameObjects.Text>();
+
   banner(title: string, sub?: string) {
+    if (this.endShown) return; // 결과 화면 위에는 배너를 띄우지 않는다
     const items: Phaser.GameObjects.Text[] = [];
     if (title) items.push(makeText(this.scene, VIEW_W / 2, 190, title, 44).setOrigin(0.5).setStroke('#000', 6));
     if (sub) items.push(makeText(this.scene, VIEW_W / 2, title ? 240 : 200, sub, 20).setOrigin(0.5).setStroke('#000', 4));
     for (const t of items) {
       t.setDepth(120).setAlpha(0);
-      this.scene.tweens.add({ targets: t, alpha: 1, duration: 300, yoyo: true, hold: 1600, onComplete: () => t.destroy() });
+      this.banners.add(t);
+      this.scene.tweens.add({ targets: t, alpha: 1, duration: 300, yoyo: true, hold: 1600, onComplete: () => (this.banners.delete(t), t.destroy()) });
     }
   }
 
-  /** 승리/전멸 화면. 방장(또는 혼자)이면 onBack으로 로비에 돌아간다. */
-  showEnd(s: Snapshot, onBack: (() => void) | null) {
+  /**
+   * 결과 화면 (승리·전멸·도중에 끝냄). onBack이 있으면 그 버튼으로 돌아간다 (방장·혼자는 로비, 혼자 끝난 참가자는 메뉴). note: 제목 아래 한 줄 설명
+   * 위에 걸린 시간·처치 수·던전 결과, 아래에 사람마다 기록(처치·준 피해·받은 피해·쓰러짐·부활·경험치·돈)과 착용 장비.
+   */
+  showEnd(s: Snapshot, onBack: (() => void) | null, note = '', backLabel = '로비로 돌아가기 (처음부터 다시)') {
     if (this.endShown) return;
     this.endShown = true;
+    for (const t of this.banners) t.destroy();
+    this.banners.clear();
+    const sc = this.scene;
     const win = s.status === 'victory';
-    const g = this.scene.add.graphics().setDepth(200);
-    g.fillStyle(0x000000, 0.75).fillRect(0, 0, VIEW_W, VIEW_H);
-    makeText(this.scene, VIEW_W / 2, 130, win ? '승리!' : '전멸...', 52)
-      .setOrigin(0.5).setDepth(201).setColor(win ? '#ffd040' : '#ff6060');
-    const rows = s.players.map((p) => `${CLASSES[p.cls].race} ${CLASSES[p.cls].name}  ${p.name}   Lv.${p.level}   처치 ${p.kills}`);
-    makeText(this.scene, VIEW_W / 2, 230, rows.join('\n'), 18).setOrigin(0.5, 0).setDepth(201).setLineSpacing(10).setAlign('center');
-    const msg = onBack ? '클릭 또는 Enter: 로비로 돌아가기 (처음부터 다시)' : '방장이 로비로 돌아가기를 기다리는 중...';
-    const btn = makeText(this.scene, VIEW_W / 2, 440, msg, 18).setOrigin(0.5).setDepth(201).setColor('#a0d0ff');
+    const D = 200;
+    const g = sc.add.graphics().setDepth(D);
+    g.fillStyle(0x000000, 0.82).fillRect(0, 0, VIEW_W, VIEW_H);
+    const text = (x: number, y: number, str: string, size: number, color = '#ffffff') => makeText(sc, x, y, str, size).setDepth(D + 1).setColor(color);
+    const ended = s.status === 'ended';
+    text(VIEW_W / 2, 44, win ? '승리!' : ended ? '게임 종료' : '전멸...', 40, win ? '#ffd040' : ended ? '#c8d0e0' : '#ff6060').setOrigin(0.5);
+    if (note) text(VIEW_W / 2, 66, note, 12, '#8d9ab3').setOrigin(0.5, 0);
+
+    // 전체 요약
+    const time = playTime(s.tick);
+    const kills = s.players.reduce((n, p) => n + p.kills, 0);
+    const dg = s.dungeon ? (s.dungeon.cleared ? '던전 클리어' : s.dungeon.state === 'open' ? '던전 안 들어감' : '던전 실패') : '';
+    text(VIEW_W / 2, 92, [`${win ? '클리어 시간' : '플레이 시간'} ${time}`, `처치 ${kills.toLocaleString()}마리`, `${win ? '흑룡 처치' : `${s.zone}구역까지`}`, dg].filter(Boolean).join('   ·   '), 15, '#d8e4ff').setOrigin(0.5);
+
+    // 사람마다 기록 표
+    const cols: { key: string; x: number; v: (p: Player) => string }[] = [
+      { key: '처치', x: 330, v: (p) => p.kills.toLocaleString() },
+      { key: '중간보스', x: 405, v: (p) => String(p.record.eliteKills) },
+      { key: '준 피해', x: 505, v: (p) => p.record.dmg.toLocaleString() },
+      { key: '받은 피해', x: 600, v: (p) => p.record.taken.toLocaleString() },
+      { key: '쓰러짐', x: 660, v: (p) => String(p.record.downs) },
+      { key: '부활', x: 710, v: (p) => String(p.record.revives) },
+      { key: '경험치', x: 805, v: (p) => p.record.xp.toLocaleString() },
+      { key: '돈', x: 900, v: (p) => `${p.record.gold.toLocaleString()} G` },
+    ];
+    const top = 112;
+    for (const c of cols) text(c.x, top, c.key, 12, '#8d9ab3').setOrigin(1, 0);
+    const best = Math.max(...s.players.map((p) => p.record.dmg));
+    const rowH = Math.min(92, (VIEW_H - top - 104) / Math.max(1, s.players.length)); // 아래에 버튼 줄
+    s.players.forEach((p, i) => {
+      const y = top + 22 + i * rowH;
+      g.fillStyle(0xffffff, i % 2 ? 0.03 : 0.07).fillRoundedRect(36, y - 6, VIEW_W - 72, rowH - 6, 6);
+      const def = CLASSES[p.cls];
+      text(48, y, `${def.race} ${def.name}  ${p.name}${p.record.dmg === best && best > 0 && s.players.length > 1 ? '  ★' : ''}`, 15, hex(def.color)).setOrigin(0, 0);
+      text(48, y + 20, `Lv.${p.level}`, 13, '#ffd040').setOrigin(0, 0);
+      for (const c of cols) text(c.x, y + 2, c.v(p), 14).setOrigin(1, 0);
+      // 착용 장비 (등급 색) + 가방
+      let x = 110;
+      const iy = y + 22;
+      const items = p.inv.flatMap((sl) => (sl?.kind === 'item' ? [sl.item] : []));
+      const bag = p.bag.filter(Boolean).length;
+      for (const it of items) {
+        const t = text(x, iy, itemName(it, p.cls), 12, RARITY[it.rarity].color).setOrigin(0, 0);
+        x += t.width + 12;
+        if (x > VIEW_W - 140) {
+          t.setText('…');
+          break;
+        }
+      }
+      if (!items.length) text(x, iy, '착용 장비 없음', 12, '#667788').setOrigin(0, 0);
+      if (bag) text(VIEW_W - 48, iy, `가방 ${bag}개`, 12, '#8d9ab3').setOrigin(1, 0);
+    });
+
+    // 버튼: 결과 이미지 저장
+    const button = (x: number, label: string, onClick: (b: Phaser.GameObjects.Text) => void) => {
+      const b = text(x, VIEW_H - 64, label, 15, '#ffffff').setOrigin(0.5).setPadding(14, 6, 14, 6).setBackgroundColor('#2a3a5a').setInteractive({ useHandCursor: true });
+      b.on('pointerdown', () => onClick(b));
+      return b;
+    };
+    button(VIEW_W / 2, '📷 결과 이미지 저장', (b) => {
+      b.setText('이미지 만드는 중...');
+      downloadResultImage(s, this.myId).then(() => b.setText('📷 결과 이미지 저장')).catch(() => b.setText('저장하지 못했어요'));
+    });
+    if (s.players.length > 1) text(VIEW_W - 40, VIEW_H - 52, '★ 가장 많은 피해', 11, '#8d9ab3').setOrigin(1, 0);
+
+    const msg = onBack ? `클릭 또는 Enter: ${backLabel}` : '방장이 로비로 돌아가기를 기다리는 중...';
+    const btn = text(VIEW_W / 2, VIEW_H - 26, msg, 17, '#a0d0ff').setOrigin(0.5);
     if (onBack) btn.setInteractive({ useHandCursor: true }).on('pointerdown', onBack);
   }
 

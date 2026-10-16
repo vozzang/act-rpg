@@ -14,10 +14,18 @@ export interface Session {
   skipStory: boolean;
   /** 개발용: 모든 플레이어의 시작 레벨 (개발 서버 로비의 '시작 레벨', 방장·혼자만 쓴다). 없으면 1 */
   startLevel?: number;
+  /** 개발용: 시작 구역 (개발 서버 로비의 '시작 구역', 방장·혼자만 쓴다). 없으면 1 */
+  startZone?: number;
   host?: HostNet; // 방장일 때 네트워크
   client?: ClientNet; // 참가자일 때 네트워크
   /** 호스트/솔로가 '로비로' 버튼을 눌렀을 때 */
   backToLobby: () => void;
+  /** 참가자: 방장과의 연결만 끊는다 (게임 화면은 그대로 두고 결과 화면을 보여 준 뒤 leaveToMenu로 나간다) */
+  disconnect: () => void;
+  /** 게임 화면을 닫고 처음 메뉴로 (참가자가 나갔거나 방장 연결이 끊긴 뒤 결과 화면에서) */
+  leaveToMenu: () => void;
+  /** 참가자: 방장과의 연결이 끊겼을 때. 게임 화면이 결과를 보여 줄 수 있으면 true (그러면 바로 메뉴로 나가지 않는다) */
+  onHostLost?: () => boolean;
 
   // 참가자: 방장에게서 스냅샷을 받았을 때
   onSnap?: (s: Snapshot) => void;

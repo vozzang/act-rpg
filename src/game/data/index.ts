@@ -7,6 +7,7 @@
 //   gear.ts     장비 등급, 드랍, 장비 만들기
 //   shop.ts     회복 음식, 아이템 상자·가방, 상점
 //   forge.ts    대장간 조합법
+//   dungeon.ts  던전 (5구역 던전 문, 웨이브, 보상)
 export * from './core';
 export * from './classes';
 export * from './stats';
@@ -15,3 +16,4 @@ export * from './items';
 export * from './gear';
 export * from './shop';
 export * from './forge';
+export * from './dungeon';
