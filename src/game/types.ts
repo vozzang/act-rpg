@@ -71,7 +71,12 @@ export interface Item {
   noun?: string; // 종류 이름 (대검·반지 등). 대장간 조합법 재료를 맞출 때 쓴다
   title?: string; // 화면에 보이는 이름 (목록의 장비는 모두 있다)
   stats: ItemStats; // 붙은 수치
+  effect?: WeaponEffect; // 맞히면 일정 확률로 생기는 특수 효과 (유니크 전설 무기, 수치는 WEAPON_EFFECTS)
+  cls?: ClassId; // 이 직업만 착용(아이템 상자에 넣기)할 수 있다. 다른 직업은 가방에 보관만 (유니크 전설 무기)
 }
+
+/** 유니크 전설 무기의 특수 효과: 서리(둔화) · 화염(불타는 지속 피해) · 출혈(겹치는 지속 피해) · 대지 가르기(주변 충격파와 기절) */
+export type WeaponEffect = 'frost' | 'burn' | 'bleed' | 'quake';
 
 /** 회복 음식 종류: HP 음식 · MP 음식 */
 export type FoodKind = 'hpFood' | 'mpFood';
@@ -140,6 +145,13 @@ export interface Enemy extends Body {
   hurt: number; // 피격 번쩍임
   stun: number; // 넉백·기절 중에는 AI가 멈춘다
   slow: number; // 둔화 남은 시간
+  burn: number; // 화염 남은 시간 (업화의 지팡이)
+  burnDps: number; // 화염 초당 피해
+  bleed: number; // 출혈 남은 시간 (선혈의 검)
+  bleedStacks: number; // 출혈 겹친 수
+  bleedDps: number; // 출혈 한 겹의 초당 피해
+  dotBy: string; // 지속 피해를 건 플레이어 id (쓰러뜨린 사람으로 친다)
+  dotTick: number; // 지속 피해를 다음에 줄 때까지 남은 시간
   rush: number; // 멀리서 공격받아 쏜 쪽으로 돌격하는 남은 시간 (빨라진다)
   taunt: number; // 도발 남은 시간
   tauntBy: string; // 도발한(또는 멀리서 쏜) 플레이어 id
@@ -172,6 +184,7 @@ export interface Projectile {
   pierce: boolean; // 적을 뚫고 지나가는지
   hitIds: number[]; // 관통 투사체가 이미 맞힌 적
   homing?: number; // 따라가는 적 id (자동 조준된 궁수 기본 공격)
+  look?: 'frost' | 'burn'; // 겉모습: frost = 서리바람 활 궁수의 화살 (얼음빛), burn = 업화의 지팡이 마법사의 구체 (불덩이)
   turn?: number; // 따라갈 때 초당 최대로 꺾이는 각도 (라디안)
 }
 
@@ -212,14 +225,15 @@ export interface Shop {
 }
 
 /** 폭발 연출 종류 (화면 효과만 다르다) */
-export type BoomKind = 'orb' | 'fireball' | 'meteor' | 'rain' | 'slam' | 'bossSlam' | 'firebomb' | 'boss';
+export type BoomKind = 'orb' | 'fireOrb' | 'fireball' | 'meteor' | 'rain' | 'slam' | 'bossSlam' | 'firebomb' | 'boss';
 
 /**
  * 게임에서 일어난 일. 호스트가 만들어 스냅샷에 담아 보내고, 화면이 숫자·배너·효과·소리로 보여 준다.
  * x·y가 있는 것은 그 자리(월드 좌표)에서, pid가 있는 것은 그 플레이어에게 일어난 일이다.
  */
 export type GameEvent =
-  | { t: 'dmg'; x: number; y: number; v: number; crit: boolean; toPlayer: boolean } // 피해 (v: 피해량, toPlayer: 플레이어가 맞았는지)
+  | { t: 'dmg'; x: number; y: number; v: number; crit: boolean; toPlayer: boolean; dot?: 'burn' | 'bleed' } // 피해 (v: 피해량, toPlayer: 플레이어가 맞았는지, dot: 화염·출혈 지속 피해)
+  | { t: 'proc'; effect: WeaponEffect; x: number; y: number } // 유니크 무기 효과가 걸렸다 (맞은 자리에 얼음·불꽃·피가 튄다)
   | { t: 'dodge'; x: number; y: number } // 플레이어가 적의 공격을 피했다
   // 소리용 이벤트 (화면 효과는 없다)
   | { t: 'kill'; x: number; y: number; kind: EnemyKind; elite: boolean } // 적이 쓰러졌다
@@ -241,20 +255,20 @@ export type GameEvent =
   | { t: 'bought'; pid: string; entry: ShopEntry } // 상점에서 샀다
   | { t: 'notice'; pid: string; text: string } // 그 플레이어에게만 보이는 짧은 안내 (품절, 상자 가득 등)
   | { t: 'stash'; pid: string; kind: FoodKind } // 주운 음식을 상자에 넣었다
-  | { t: 'swing'; x: number; y: number; aim: number; range: number; arc: number; enemy: boolean }; // 근접 공격 부채꼴 (enemy: 적의 공격인지)
+  | { t: 'swing'; x: number; y: number; aim: number; range: number; arc: number; enemy: boolean; look?: WeaponEffect }; // 근접 공격 부채꼴 (enemy: 적의 공격인지, look: 유니크 무기 칼자국 모양)
 
 /** 판 상태: 진행 중 · 승리 · 전멸 */
 export type GameStatus = 'playing' | 'victory' | 'defeat';
 
 /** 화면에 필요한 적 정보만 (네트워크로 보내는 양을 줄이려고 공격력·경험치·AI 내부 값 등은 뺀다) */
 export type EnemyView = Pick<Enemy,
-  'id' | 'kind' | 'elite' | 'x' | 'y' | 'r' | 'aim' | 'hp' | 'maxHp' | 'hurt' | 'stun' | 'slow' | 'taunt' | 'state' | 'timer' | 'z' | 'tx' | 'ty'>;
+  'id' | 'kind' | 'elite' | 'x' | 'y' | 'r' | 'aim' | 'hp' | 'maxHp' | 'hurt' | 'stun' | 'slow' | 'burn' | 'bleed' | 'taunt' | 'state' | 'timer' | 'z' | 'tx' | 'ty'>;
 
 /** 화면에 필요한 떨어진 물건 정보만 (돈 액수·튀는 속도는 빼고, 장비는 이름·수치를 보여줘야 하므로 남긴다) */
 export type DropView = Pick<Drop, 'id' | 'kind' | 'x' | 'y' | 'z' | 'item'>;
 
 /** 화면에 필요한 투사체 정보만 */
-export type ProjectileView = Pick<Projectile, 'id' | 'kind' | 'x' | 'y' | 'z' | 'vx' | 'vy' | 'vz' | 'r' | 'life' | 'aoe'>;
+export type ProjectileView = Pick<Projectile, 'id' | 'kind' | 'x' | 'y' | 'z' | 'vx' | 'vy' | 'vz' | 'r' | 'life' | 'aoe' | 'look'>;
 
 /** 네트워크로 전송되고 렌더러가 그리는 상태. 플레이어들 근처의 엔티티만 담는다. */
 export interface Snapshot {

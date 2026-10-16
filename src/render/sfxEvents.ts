@@ -25,6 +25,7 @@ export function playEventSound(sfx: Sound, e: GameEvent, myId: string) {
   const at = 'x' in e && 'y' in e ? { x: e.x, y: e.y } : undefined;
   switch (e.t) {
     case 'dmg':
+      if (e.dot) break; // 지속 피해는 0.5초마다 들어가 소리를 내지 않는다
       if (e.toPlayer) sfx.play('hurt', { at, volume: 0.6 });
       else if (e.crit) sfx.play('hitHeavy', { at, volume: 0.55 });
       else sfx.pick(['hit1', 'hit2'], { at, volume: 0.4 });
@@ -89,6 +90,11 @@ export function playEventSound(sfx: Sound, e: GameEvent, myId: string) {
       break;
     case 'dodge':
       sfx.play('swing2', { at, volume: 0.35, rate: 1.8 });
+      break;
+    case 'proc': // 유니크 무기 효과: 서리는 높은 마법 소리, 화염은 낮은 마법 소리, 출혈은 짧게 물어뜯는 소리 (대지 가르기는 boom이 낸다)
+      if (e.effect === 'frost') sfx.play('magic', { at, volume: 0.3, rate: 1.7 });
+      else if (e.effect === 'burn') sfx.play('magic', { at, volume: 0.3, rate: 0.75 });
+      else if (e.effect === 'bleed') sfx.play('bite', { at, volume: 0.25, rate: 1.3 });
       break;
     case 'down':
       sfx.play('down', { volume: e.pid === myId ? 0.8 : 0.45, vary: 0 });

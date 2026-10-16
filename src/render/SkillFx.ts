@@ -2,7 +2,7 @@
 // 게임 규칙과는 상관없는 화면 효과만 다룬다. 좌표는 월드 px를 받아 3D 단위(1칸 = 1)로 바꾼다.
 import * as THREE from 'three';
 import { ELITE, ENEMIES, SKILL, TILE } from '../game/data';
-import type { BoomKind, ClassId, EnemyView, Player, ProjectileView } from '../game/types';
+import type { BoomKind, ClassId, EnemyView, Player, ProjectileView, WeaponEffect } from '../game/types';
 
 const U = 1 / TILE;
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
@@ -569,6 +569,43 @@ export class SkillFx {
     this.ring(x, z, 0.3, 1.2, 0x90e8ff, 0.3);
   }
 
+  /** 유니크 무기 효과가 걸린 자리 */
+  procHit(effect: WeaponEffect, wx: number, wy: number) {
+    const x = wx * U, z = wy * U;
+    if (effect === 'frost') this.frostHit(wx, wy);
+    else if (effect === 'burn') {
+      // 화염: 불씨가 확 튀어 오른다
+      this.burst(x, 0.5, z, 16, 2.4, 0xff7a20, 0.16, 0.5, -1, 1.5);
+      this.burst(x, 0.5, z, 8, 1.5, 0xffe080, 0.12, 0.35);
+      this.ring(x, z, 0.2, 0.9, 0xff8a30, 0.3);
+    } else if (effect === 'bleed') {
+      // 출혈: 붉은 피가 튀어 바닥으로 떨어진다
+      this.burst(x, 0.6, z, 16, 2.2, 0xc01020, 0.12, 0.5, 7, 1.2);
+      this.burst(x, 0.6, z, 6, 1.2, 0xff3040, 0.1, 0.3);
+    }
+  }
+
+  /** 근접 공격 칼자국에 곁들이는 무기 효과: 선혈의 검은 핏방울, 대지 분쇄 도끼는 흙먼지와 돌 조각 */
+  slashFx(wx: number, wy: number, aim: number, range: number, look: WeaponEffect) {
+    const r = range * U * 0.85;
+    for (let i = 0; i < 8; i++) {
+      const a = aim + rand(-0.8, 0.8);
+      const x = wx * U + Math.cos(a) * r * rand(0.5, 1), z = wy * U + Math.sin(a) * r * rand(0.5, 1);
+      if (look === 'bleed') this.glow.emit(x, rand(0.3, 0.7), z, Math.cos(a) * 1.2, rand(0.5, 1.5), Math.sin(a) * 1.2, 0.45, i % 2 ? 0xd01828 : 0xff4050, rand(0.06, 0.11));
+      else if (look === 'quake') this.smoke.emit(x, 0.1, z, Math.cos(a) * 0.8, rand(0.3, 0.8), Math.sin(a) * 0.8, 0.8, 0xa08668, 0.45, { grow: 1.5 });
+    }
+    if (look === 'quake') this.debris(wx * U + Math.cos(aim) * r * 0.8, wy * U + Math.sin(aim) * r * 0.8, 4, 0x6a5a48, 2.5);
+  }
+
+  /** 서리바람 활의 서리가 걸린 자리: 얼음 조각이 튀고 바닥에 얼음이 번진다 */
+  frostHit(wx: number, wy: number) {
+    const x = wx * U, z = wy * U;
+    this.burst(x, 0.5, z, 18, 2.6, 0xbfefff, 0.12, 0.45, 5, 1.5); // 얼음 조각 (떨어진다)
+    this.burst(x, 0.5, z, 10, 1.4, 0xffffff, 0.16, 0.35, 0, 0.5); // 하얀 냉기
+    this.ring(x, z, 0.2, 0.9, 0x9ae4ff, 0.3);
+    this.decal(x, z, 0.9, this.tex.ice, 0xffffff, 1.2, { fade: 0.6, grow: 0.2, opacity: 0.7 });
+  }
+
   /** 폭발·충격 */
   boom(wx: number, wy: number, wr: number, kind: BoomKind | undefined) {
     const x = wx * U, z = wy * U, r = Math.max(0.3, wr * U);
@@ -609,6 +646,13 @@ export class SkillFx {
         this.bubble(x, 0.4, z, 0.1, r * 0.6, 0xb080ff, 0.25);
         this.burst(x, 0.4, z, 18, 3, 0xd0a8ff, 0.15, 0.4);
         break;
+      case 'fireOrb': // 업화의 지팡이: 기본 공격 구체가 작은 불꽃으로 터진다 (화염구보다 작고 그을음도 짧게)
+        this.bubble(x, 0.4, z, 0.1, r * 0.55, 0xff7a20, 0.25);
+        this.burst(x, 0.4, z, 20, 3.2, 0xffa040, 0.16, 0.45, 2, 1);
+        this.burst(x, 0.4, z, 8, 2, 0xffe0a0, 0.12, 0.3);
+        this.decal(x, z, r * 1.1, this.tex.scorch, 0xffffff, 1.5, { fade: 0.8, grow: 0.06, opacity: 0.6 });
+        for (let i = 0; i < 4; i++) this.smoke.emit(x + rand(-0.2, 0.2), 0.4, z + rand(-0.2, 0.2), rand(-0.3, 0.3), rand(0.6, 1.2), rand(-0.3, 0.3), 0.9, 0x4a4240, 0.45, { grow: 1.6 });
+        break;
       default:
         this.ring(x, z, 0.3, r * 2, 0xffc070, 0.35);
     }
@@ -633,13 +677,21 @@ export class SkillFx {
         for (let i = 0; i < 4; i++) this.glow.emit(pos.x + j() * 6, pos.y + j() * 3, pos.z + j() * 6, 0, rand(0, 0.5), 0, rand(0.2, 0.35), 0xa8e0ff, rand(0.12, 0.22));
         break;
       case 'orb':
-        this.glow.emit(pos.x + j(), pos.y + j(), pos.z + j(), 0, 0.2, 0, 0.3, 0xc8a0ff, 0.14);
+        if (pr.look === 'burn') {
+          // 업화의 지팡이: 불꽃 꼬리와 옅은 연기
+          for (let i = 0; i < 2; i++) this.glow.emit(pos.x + j(), pos.y + j(), pos.z + j(), rand(-0.3, 0.3), rand(0.2, 0.8), rand(-0.3, 0.3), rand(0.2, 0.35), i ? 0xff6a10 : 0xffc050, rand(0.12, 0.2));
+          if (Math.random() < 0.3) this.smoke.emit(pos.x, pos.y, pos.z, 0, 0.4, 0, 0.6, 0x5a524e, 0.22, { grow: 1.4 });
+        } else this.glow.emit(pos.x + j(), pos.y + j(), pos.z + j(), 0, 0.2, 0, 0.3, 0xc8a0ff, 0.14);
         break;
       case 'iceOrb': // 얼음 마녀: 하얀 냉기 꼬리
         for (let i = 0; i < 2; i++) this.glow.emit(pos.x + j(), pos.y + j(), pos.z + j(), 0, rand(-0.2, 0.2), 0, rand(0.3, 0.5), i ? 0x9ae4ff : 0xffffff, rand(0.12, 0.2));
         break;
       case 'arrow':
-        if (pr.r > 7) this.glow.emit(pos.x, pos.y, pos.z, 0, 0, 0, 0.35, 0xffe08a, 0.14); // 저격·폭풍의 화살: 금빛 꼬리
+        if (pr.look === 'frost') {
+          // 서리바람 활: 하얀·하늘색 냉기 알갱이가 꼬리처럼 남고, 가끔 눈송이가 떨어진다
+          for (let i = 0; i < 2; i++) this.glow.emit(pos.x + j(), pos.y + j(), pos.z + j(), rand(-0.2, 0.2), rand(-0.1, 0.2), rand(-0.2, 0.2), rand(0.25, 0.45), i ? 0x8fe0ff : 0xffffff, rand(0.08, 0.15));
+          if (Math.random() < 0.35) this.glow.emit(pos.x + j(), pos.y, pos.z + j(), rand(-0.1, 0.1), rand(-0.8, -0.4), rand(-0.1, 0.1), 0.6, 0xe8f8ff, 0.06);
+        } else if (pr.r > 7) this.glow.emit(pos.x, pos.y, pos.z, 0, 0, 0, 0.35, 0xffe08a, 0.14); // 저격·폭풍의 화살: 금빛 꼬리
         break;
     }
   }
@@ -744,6 +796,16 @@ export class SkillFx {
         fr.visible = true;
         if (Math.random() < dt * 8) this.glow.emit(x + rand(-0.3, 0.3) * size, rand(0.2, 0.8) * size, z + rand(-0.3, 0.3) * size, 0, rand(0.1, 0.4), 0, rand(0.5, 0.8), 0xdff6ff, 0.1);
       } else if (fr) fr.visible = false;
+      // 화염(업화의 지팡이): 몸에서 불꽃이 피어오른다
+      const h = ENEMIES[e.kind].height * U * (e.elite ? ELITE.scale : 1);
+      if (e.burn > 0 && e.hp > 0 && Math.random() < dt * 30) {
+        this.glow.emit(x + rand(-0.25, 0.25) * size, rand(0.1, h), z + rand(-0.25, 0.25) * size, rand(-0.2, 0.2), rand(0.8, 1.6), rand(-0.2, 0.2), rand(0.35, 0.6), Math.random() < 0.5 ? 0xff7a20 : 0xffc040, rand(0.1, 0.18));
+        if (Math.random() < 0.25) this.smoke.emit(x, h * 0.8, z, rand(-0.2, 0.2), rand(0.5, 1), rand(-0.2, 0.2), 0.8, 0x3a3230, 0.4, { grow: 1.5 });
+      }
+      // 출혈(선혈의 검): 붉은 방울이 떨어진다 (겹칠수록 많이)
+      if (e.bleed > 0 && e.hp > 0 && Math.random() < dt * 12) {
+        this.glow.emit(x + rand(-0.2, 0.2) * size, rand(h * 0.3, h * 0.8), z + rand(-0.2, 0.2) * size, rand(-0.3, 0.3), rand(-1.5, -0.6), rand(-0.3, 0.3), rand(0.4, 0.6), 0xc01020, rand(0.06, 0.1));
+      }
       // 기절(대지 강타·방패 돌진): 머리 위를 도는 노란 별
       let st = this.stars.get(e.id);
       if (e.stun > 0.15 && e.hp > 0 && e.kind !== 'boss') {

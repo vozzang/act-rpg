@@ -2,7 +2,7 @@
 // 드랍 확률·상점 값·조합법은 게임 코드(data/)의 규칙으로 바로 계산하므로, 목록이나 규칙을 고치면 페이지도 바뀐다.
 import './pages.css';
 import {
-  ATTR_KEYS, ATTR_NAMES, BAG_SIZE, FORGE, FOOD, INV_SIZE, ITEM_DROP_MULT, ITEM_LIST, RARITY, RECIPES, SHOP, ZONE_NAMES, recipeText, shopItemPrice,
+  ATTR_KEYS, ATTR_NAMES, BAG_SIZE, CLASSES, FORGE, FOOD, INV_SIZE, ITEM_DROP_MULT, ITEM_LIST, RARITY, RECIPES, SHOP, UNIQUE_DROP, ZONE_NAMES, effectText, recipeText, shopItemPrice,
   type ItemDef, type ItemSource,
 } from '../game/data';
 import type { ItemStats, Rarity, Slot } from '../game/types';
@@ -76,9 +76,11 @@ function render() {
     }
     const rc = recipeOf(d);
     if (rc) how.push(`<span class="chip hot">조합: ${recipeText(rc)}</span>`);
-    return `<tr><td style="color:${RARITY[d.rarity].color};font-weight:600">${d.name}</td>
+    if (d.from.includes('unique')) how.push(`<span class="chip hot">${UNIQUE_DROP.fromZone}구역부터 중간보스·문지기 ${Math.round(UNIQUE_DROP.chance * 100)}% (한 판에 하나)</span>`);
+    if (d.cls) how.push(`<span class="chip">${CLASSES[d.cls].name} 전용</span>`);
+    return `<tr><td style="color:${RARITY[d.rarity].color};font-weight:600">${d.name}${d.effect ? `<div class="muted" style="font-weight:400;font-size:12px;white-space:normal;min-width:220px">✦ ${effectText(d.effect)}</div>` : ''}</td>
       <td class="l" style="color:${RARITY[d.rarity].color}">${RARITY[d.rarity].name}</td>
-      <td class="l muted">${SLOT_NAME[d.slot]} · ${d.base}</td><td class="l">${d.tier}단계 <span class="muted">(${tierText(d.tier)})</span></td>
+      <td class="l muted">${SLOT_NAME[d.slot]} · ${d.base}</td><td class="l">${d.from.includes('unique') ? `유니크 <span class="muted">(${UNIQUE_DROP.fromZone}구역~)</span>` : `${d.tier}단계 <span class="muted">(${tierText(d.tier)})</span>`}</td>
       ${STAT_COLS.map((c) => statCell(d, c.key)).join('')}
       <td class="l wrap">${how.join('')}</td></tr>`;
   });

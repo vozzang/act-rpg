@@ -19,6 +19,7 @@ import { Sound } from './Sound';
 import { playEventSound } from './sfxEvents';
 import { STORY_BOSS, STORY_ENDING, STORY_INTRO, STORY_ZONES } from '../game/story';
 import { CharMenu } from './CharMenu';
+import { DevItemPanel } from './DevItemPanel';
 import { Hud, type Device } from './Hud';
 import { MapView } from './MapView';
 import { BTN, PadInput } from './PadInput';
@@ -141,6 +142,17 @@ export class GameScene extends Phaser.Scene {
       this.sim = new Sim(s.seed, s.players);
       // 개발 중 콘솔에서 상태를 살펴볼 수 있게 노출 (sim: 게임 상태, scene: 화면·입력)
       if (import.meta.env.DEV) Object.assign(window, { sim: this.sim, scene: this });
+      // 개발용 장비 시험 창 (` 키). 열려 있는 동안은 게임 키 입력을 막는다 (검색 칸에 글을 쓸 수 있게)
+      if (import.meta.env.DEV) {
+        const kb = this.input.keyboard!;
+        const panel = new DevItemPanel(this.sim, s.myId, (open) => {
+          kb.enabled = !open;
+          kb.resetKeys();
+          // 게임이 잡아 두는 키(스페이스·방향키)도 풀어 줘야 검색 칸에 띄어쓰기를 할 수 있다
+          if (kb.manager) kb.manager.preventDefault = !open;
+        });
+        this.events.once('shutdown', () => panel.destroy());
+      }
       // 개발용 시작 레벨: 모든 플레이어를 그 레벨로
       if (import.meta.env.DEV && (s.startLevel ?? 1) > 1) for (const p of s.players) this.sim.setLevel(p.id, s.startLevel!);
       s.onRemoteInput = (id, input) => this.sim!.setInput(id, input);

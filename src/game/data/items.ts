@@ -2,10 +2,10 @@
 // tier: 구역 묶음 (1: 1·2구역, 2: 3·4구역, 3: 5·6구역, 4: 7·8구역, 5: 9·10구역). 깊은 묶음일수록 재질 이름이 바뀌고 수치가 높다.
 // base: 종류 이름 (대장간 조합법 재료로 쓴다), from: 얻는 곳 — drop 몬스터, shop 상점, recipe 대장간 조합법
 // (처음 수치는 기존 공식에서 운을 뺀 값으로 만들었다: 무기 공격 = (3 + 4z)·등급배율, 등급배율 일반 1 · 희귀 1.6 · 영웅 2.4 · 전설 3.6)
-import type { ItemStats, Rarity, Slot } from '../types';
+import type { ClassId, ItemStats, Rarity, Slot, WeaponEffect } from '../types';
 
-/** 장비를 얻는 곳: 몬스터 드랍 · 상점 · 대장간 조합법 */
-export type ItemSource = 'drop' | 'shop' | 'recipe';
+/** 장비를 얻는 곳: 몬스터 드랍 · 상점 · 대장간 조합법 · 유니크(5구역부터 중간보스·문지기, 한 판에 하나씩) */
+export type ItemSource = 'drop' | 'shop' | 'recipe' | 'unique';
 
 /** 장비 하나의 정의 */
 export interface ItemDef {
@@ -17,6 +17,8 @@ export interface ItemDef {
   tier: number; // 단계 1~5 (이 단계 구역의 몬스터·상점에서 나온다)
   from: ItemSource[]; // 얻는 곳
   stats: ItemStats; // 수치
+  effect?: WeaponEffect; // 특수 효과 (유니크 전설 무기)
+  cls?: ClassId; // 이 직업만 착용할 수 있다 (유니크 전설 무기)
 }
 
 export const ITEM_LIST: ItemDef[] = [
@@ -145,4 +147,11 @@ export const ITEM_LIST: ItemDef[] = [
   { key: 'hero5', name: '용사의 목걸이 Ⅴ', base: '용사의 목걸이', slot: 'accessory', rarity: 'legendary', tier: 5, from: ['recipe'], stats: { atk: 74, def: 37, crit: 0.41, maxHp: 513 } }, // 조합법
   { key: 'hammer5', name: '무쇠 대장장이의 망치 Ⅴ', base: '무쇠 대장장이의 망치', slot: 'weapon', rarity: 'legendary', tier: 5, from: ['recipe'], stats: { atk: 207, str: 55, vit: 55 } }, // 조합법
   { key: 'bulwark5', name: '철벽의 갑주 Ⅴ', base: '철벽의 갑주', slot: 'armor', rarity: 'legendary', tier: 5, from: ['recipe'], stats: { def: 111, vit: 71, maxHp: 513 } }, // 조합법
+
+  // ── 유니크 전설 무기: 단계가 하나뿐이고, 5구역부터 중간보스·문지기가 낮은 확률로 떨어뜨린다 (한 판에 같은 무기는 한 번만, UNIQUE_DROP) ──
+  // 수치는 4단계(7·8구역) 조합 전설 정도. 대신 맞히면 일정 확률로 특수 효과 (WEAPON_EFFECTS). 각자 한 직업만 착용할 수 있다 (cls)
+  { key: 'frostbow', name: '서리바람 활', base: '서리바람 활', slot: 'weapon', rarity: 'legendary', tier: 4, from: ['unique'], stats: { atk: 160, dex: 45, crit: 0.08 }, effect: 'frost', cls: 'elf' }, // 서리: 둔화 · 궁수 전용
+  { key: 'hellstaff', name: '업화의 지팡이', base: '업화의 지팡이', slot: 'weapon', rarity: 'legendary', tier: 4, from: ['unique'], stats: { atk: 160, int: 45, maxHp: 120 }, effect: 'burn', cls: 'gnome' }, // 화염: 지속 피해 · 마법사 전용
+  { key: 'bloodsword', name: '선혈의 검', base: '선혈의 검', slot: 'weapon', rarity: 'legendary', tier: 4, from: ['unique'], stats: { atk: 170, str: 45, crit: 0.06 }, effect: 'bleed', cls: 'swordsman' }, // 출혈: 겹치는 지속 피해 · 검사 전용
+  { key: 'quakeaxe', name: '대지 분쇄 도끼', base: '대지 분쇄 도끼', slot: 'weapon', rarity: 'legendary', tier: 4, from: ['unique'], stats: { atk: 160, str: 35, vit: 35 }, effect: 'quake', cls: 'dwarf' }, // 대지 가르기: 주변 충격파 · 수호자 전용
 ];

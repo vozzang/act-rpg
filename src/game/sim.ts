@@ -1,7 +1,7 @@
 // 게임 시뮬레이션. 호스트에서만 실행되고, 클라이언트는 스냅샷을 받아 그리기만 한다.
 import {
   AGGRO_RANGE, BAG_SIZE, FORGE, ITEM_DROP_MULT, TICK_RATE, ATTR_EFFECT, ATTR_KEYS, CLASSES, ELITE, ELITES, ENEMIES, GATE_KEEPERS, FOOD, INV_SIZE, POINTS_PER_LEVEL, REVIVE_TIME, SHOP, SKILL, TILE, ZONE_NAMES,
-  deriveStats, makeItem, partyHpScale, PASSIVE, arrowCount, ironSkinRate, lifestealRate, manaFlowRate, type EliteDef, shopStock, matchRecipe, recipeItem, randomForgeRarity, totalAttrs, xpForLevel, zoneScale, type AttackDef,
+  deriveStats, makeItem, partyHpScale, skillMpCost, canEquip, ITEM_LIST, UNIQUE_DROP, WEAPON_EFFECTS, itemFromDef, PASSIVE, arrowCount, ironSkinRate, lifestealRate, manaFlowRate, type EliteDef, shopStock, matchRecipe, recipeItem, randomForgeRarity, totalAttrs, xpForLevel, zoneScale, type AttackDef,
 } from './data';
 import { mulberry32, openGate, zoneOfTx, type Level } from './level';
 import { gameLevel } from './world';
@@ -45,6 +45,7 @@ export class Sim {
   gates: boolean[];
   private gateNoticeAt = new Map<string, number>(); // 닫힌 문 안내를 너무 자주 띄우지 않도록
   private leechAcc = new Map<string, number>(); // 흡혈로 모은 소수점 회복량 (플레이어별)
+  private uniquesDropped = new Set<string>(); // 이번 판에 이미 나온 유니크 무기 (한 판에 하나씩)
   private endTimer = 0;
   private pendingStatus: GameStatus | null = null;
 
@@ -125,7 +126,7 @@ export class Sim {
       x: 0, y: 0, vx: 0, vy: 0, r: elite ? Math.min(15, def.r * 1.25) : def.r, aim: Math.PI,
       hp, maxHp: hp, atk: Math.round(base.atk * zs.atk), def: base.def + zs.def,
       xp: Math.round(def.xp * zs.xp * (elite ? ELITE.xp : 1)),
-      hurt: 0, stun: 0, slow: 0, rush: 0, taunt: 0, tauntBy: '', timer: 1 + this.rng(), state: 'move', stateTime: 0,
+      hurt: 0, stun: 0, slow: 0, burn: 0, burnDps: 0, bleed: 0, bleedStacks: 0, bleedDps: 0, dotBy: '', dotTick: 0, rush: 0, taunt: 0, tauntBy: '', timer: 1 + this.rng(), state: 'move', stateTime: 0,
       z: 0, tx: 0, ty: 0,
     };
   }
@@ -175,6 +176,22 @@ export class Sim {
     // 새로 배운 스킬을 알린다 (스킬 사용 가능 여부는 레벨로 정해지므로 따로 할 일은 없다)
     CLASSES[p.cls].skills.forEach((sk, idx) => sk.unlock > prev && sk.unlock <= lv && this.events.push({ t: 'unlock', pid: p.id, idx }));
     this.notice(p, `[개발] 레벨 ${lv}${used > total ? ' · 배분한 포인트를 되돌렸어요' : ''}`);
+  }
+
+  /**
+   * 개발용: 아이템 상자(where 'inv') 또는 가방('bag')의 idx 칸에 목록의 장비(key)를 넣는다. key가 null이면 그 칸을 비운다.
+   * 원래 칸에 있던 것은 사라진다. 개발 서버의 장비 시험 창(DevItemPanel)에서만 부른다.
+   */
+  devSetSlot(id: string, where: 'inv' | 'bag', idx: number, key: string | null) {
+    const p = this.playerById(id);
+    const d = key ? ITEM_LIST.find((x) => x.key === key) : null;
+    if (!p || (key && !d)) return;
+    const item = d ? itemFromDef(d, this.nextId++) : null;
+    if (where === 'inv' && item && !canEquip(p.cls, item)) return this.notice(p, `${CLASSES[item.cls!].name}만 착용할 수 있어요 (가방 칸에는 넣을 수 있다)`);
+    if (where === 'inv') p.inv[idx] = item ? { kind: 'item', item } : null;
+    else p.bag[idx] = item;
+    this.recalcStats(p);
+    p.hp = Math.min(p.hp, p.stats.maxHp);
   }
 
   // ─── 메인 루프 ──────────────────────────────────────
@@ -357,10 +374,19 @@ export class Sim {
     return out;
   }
 
+  /** 착용한 유니크 무기의 특수 효과 (없으면 undefined). 공격 겉모습을 정할 때 쓴다 */
+  private weaponEffect(p: Player) {
+    for (const sl of p.inv) if (sl?.kind === 'item' && sl.item.effect) return sl.item.effect;
+    return undefined;
+  }
+
   /** 플레이어 앞(또는 주변) 부채꼴 안의 적을 친다. arc가 π 이상이면 360도. 준 피해의 합을 돌려준다. */
   private meleeArc(p: Player, range: number, arc: number, mult: number, knock: number, stun: number): number {
     let dealt = 0;
-    this.events.push({ t: 'swing', x: p.x, y: p.y, aim: p.aim, range, arc, enemy: false });
+    const eff = this.weaponEffect(p);
+    // 선혈의 검·대지 분쇄 도끼를 낀 사람의 칼자국은 핏빛·흙빛으로 보인다
+    const look = eff === 'bleed' || eff === 'quake' ? eff : undefined;
+    this.events.push({ t: 'swing', x: p.x, y: p.y, aim: p.aim, range, arc, enemy: false, ...(look ? { look } : {}) });
     for (const e of this.enemies) {
       if (!e.active || e.hp <= 0 || e.z > 30) continue;
       const d = dist(p.x, p.y, e.x, e.y);
@@ -387,6 +413,9 @@ export class Sim {
       x: p.x + Math.cos(o.ang) * p.r, y: p.y + Math.sin(o.ang) * p.r, z: 0,
       vx: Math.cos(o.ang) * o.speed, vy: Math.sin(o.ang) * o.speed, vz, gz,
       r: o.r, dmg: o.dmg, crit: o.crit, life, aoe: o.aoe, pierce: o.pierce, hitIds: [],
+      // 유니크 무기 겉모습: 서리바람 활 궁수의 화살은 얼음빛, 업화의 지팡이 마법사의 구체는 불덩이
+      ...(o.kind === 'arrow' && this.weaponEffect(p) === 'frost' ? { look: 'frost' as const } : {}),
+      ...(o.kind === 'orb' && this.weaponEffect(p) === 'burn' ? { look: 'burn' as const } : {}),
     };
   }
 
@@ -417,11 +446,12 @@ export class Sim {
   private tryUseSkill(p: Player, idx: number) {
     const sk = CLASSES[p.cls].skills[idx];
     if (!sk || p.level < sk.unlock || p.skillCds[idx] > 0) return;
-    if (p.mp < sk.mp) {
+    const cost = skillMpCost(sk, p.level);
+    if (p.mp < cost) {
       this.events.push({ t: 'nomp', pid: p.id });
       return;
     }
-    p.mp -= sk.mp;
+    p.mp -= cost;
     p.skillCds[idx] = sk.cd / (1 + p.stats.cdr);
     this.useSkill(p, idx);
   }
@@ -649,7 +679,7 @@ export class Sim {
 
   /** 장비를 아이템 상자 빈 칸에 넣는다(바로 능력치에 더해진다). 상자가 차 있으면 가방에. 둘 다 없으면 false. */
   private addItem(p: Player, item: Item): boolean {
-    const free = p.inv.indexOf(null);
+    const free = canEquip(p.cls, item) ? p.inv.indexOf(null) : -1; // 다른 직업 전용 장비는 가방에만
     if (free >= 0) {
       p.inv[free] = { kind: 'item', item };
       this.recalcStats(p);
@@ -660,7 +690,7 @@ export class Sim {
     if (bag < 0) return false;
     p.bag[bag] = item;
     this.events.push({ t: 'equip', pid: p.id, item });
-    this.notice(p, '아이템 상자가 가득 차서 가방에 넣었어요');
+    this.notice(p, canEquip(p.cls, item) ? '아이템 상자가 가득 차서 가방에 넣었어요' : `${CLASSES[item.cls!].name}만 착용할 수 있어 가방에 넣었어요`);
     return true;
   }
 
@@ -680,6 +710,7 @@ export class Sim {
     } else {
       const item = p.bag[idx];
       if (!item) return;
+      if (!canEquip(p.cls, item)) return this.notice(p, `${CLASSES[item.cls!].name}만 착용할 수 있어요`);
       const free = p.inv.indexOf(null);
       if (free < 0) return this.notice(p, '아이템 상자가 가득 찼어요');
       p.inv[free] = { kind: 'item', item };
@@ -1001,8 +1032,8 @@ export class Sim {
     e.vy = dir.y * speed;
   }
 
-  /** 적에게 피해를 준다. 실제로 준 피해(방어를 뺀 값)를 돌려준다 */
-  private hitEnemy(e: Enemy, raw: number, crit: boolean, kx: number, ky: number, by: Player | null, stun = 0): number {
+  /** 적에게 피해를 준다. 실제로 준 피해(방어를 뺀 값)를 돌려준다. proc이 false면 무기 특수 효과를 굴리지 않는다 (충격파 등에서 다시 터지지 않게) */
+  private hitEnemy(e: Enemy, raw: number, crit: boolean, kx: number, ky: number, by: Player | null, stun = 0, proc = true): number {
     if (e.hp <= 0) return 0;
     const dmg = Math.max(1, Math.round(raw - e.def * 0.5));
     e.hp -= dmg;
@@ -1031,7 +1062,71 @@ export class Sim {
       }
     }
     if (e.hp <= 0) this.killEnemy(e, by);
+    else if (by && proc) this.weaponProcs(e, by);
     return dmg;
+  }
+
+  /** 유니크 전설 무기 특수 효과: 장비한 무기마다 확률을 굴려 맞은 적에게 건다 */
+  private weaponProcs(e: Enemy, by: Player) {
+    for (const sl of by.inv) {
+      const effect = sl?.kind === 'item' ? sl.item.effect : undefined;
+      if (!effect || this.rng() >= WEAPON_EFFECTS[effect].chance) continue;
+      switch (effect) {
+        case 'frost': {
+          const t = WEAPON_EFFECTS.frost.slow;
+          e.slow = Math.max(e.slow, e.kind === 'boss' ? t / 2 : t);
+          this.events.push({ t: 'proc', effect: 'frost', x: Math.round(e.x), y: Math.round(e.y) });
+          break;
+        }
+        case 'burn': {
+          const b = WEAPON_EFFECTS.burn;
+          e.burnDps = Math.max(e.burn > 0 ? e.burnDps : 0, by.stats.atk * b.ratio); // 이미 타고 있으면 센 쪽을 남긴다
+          e.burn = b.time;
+          this.events.push({ t: 'proc', effect: 'burn', x: Math.round(e.x), y: Math.round(e.y) });
+          e.dotBy = by.id;
+          break;
+        }
+        case 'bleed': {
+          const b = WEAPON_EFFECTS.bleed;
+          e.bleedStacks = e.bleed > 0 ? Math.min(b.maxStacks, e.bleedStacks + 1) : 1;
+          e.bleed = b.time;
+          e.bleedDps = by.stats.atk * b.ratio;
+          e.dotBy = by.id;
+          this.events.push({ t: 'proc', effect: 'bleed', x: Math.round(e.x), y: Math.round(e.y) });
+          break;
+        }
+        case 'quake': {
+          const q = WEAPON_EFFECTS.quake;
+          this.events.push({ t: 'boom', x: e.x, y: e.y, r: q.radius, kind: 'slam' });
+          for (const o of this.enemies) {
+            if (o === e || !o.active || o.hp <= 0 || dist(o.x, o.y, e.x, e.y) > q.radius + o.r) continue;
+            const ang = Math.atan2(o.y - e.y, o.x - e.x);
+            const d = this.rollDamage(by, 0); // 치명타만 굴린다
+            this.hitEnemy(o, by.stats.atk * q.ratio * (d.crit ? 1.6 : 1), d.crit, Math.cos(ang) * 160, Math.sin(ang) * 160, by, q.stun, false);
+          }
+          break;
+        }
+      }
+    }
+  }
+
+  /** 화염·출혈 지속 피해: 0.5초마다 방어를 깎고 들어간다. 움찔하거나 밀려나지는 않는다 */
+  private updateDot(e: Enemy, dt: number) {
+    e.burn -= dt;
+    e.bleed -= dt;
+    if (e.bleed <= 0) e.bleedStacks = 0;
+    e.dotTick -= dt;
+    if (e.dotTick > 0) return;
+    e.dotTick = 0.5;
+    const by = this.playerById(e.dotBy);
+    for (const kind of ['burn', 'bleed'] as const) {
+      const dps = kind === 'burn' ? (e.burn > 0 ? e.burnDps : 0) : e.bleed > 0 ? e.bleedDps * e.bleedStacks : 0;
+      if (dps <= 0 || e.hp <= 0) continue;
+      const dmg = Math.max(1, Math.round(dps * 0.5 - e.def * 0.5));
+      e.hp -= dmg;
+      this.events.push({ t: 'dmg', x: e.x, y: e.y, v: dmg, crit: false, toPlayer: false, dot: kind });
+      if (e.hp <= 0) this.killEnemy(e, by);
+    }
   }
 
   private killEnemy(e: Enemy, by: Player | null) {
@@ -1058,6 +1153,16 @@ export class Sim {
       if (e.gate === null) this.events.push({ t: 'banner', text: '', sub: `${e.elite} 처치!` });
       this.spawnDrop({ kind: 'item', item: makeItem(this.nextId++, e.zone, this.rng, SHOP.rarityWeight) }, e.x, e.y);
       this.spawnDrop({ kind: this.rng() < 0.5 ? 'hpFood' : 'mpFood' }, e.x, e.y);
+      // 유니크 전설 무기: 5구역부터 낮은 확률로, 이번 판에 아직 안 나온 것 중 하나
+      if (e.zone >= UNIQUE_DROP.fromZone && this.rng() < UNIQUE_DROP.chance) {
+        const left = ITEM_LIST.filter((d) => d.from.includes('unique') && !this.uniquesDropped.has(d.key));
+        if (left.length) {
+          const d = left[Math.floor(this.rng() * left.length)];
+          this.uniquesDropped.add(d.key);
+          this.spawnDrop({ kind: 'item', item: itemFromDef(d, this.nextId++) }, e.x, e.y);
+          this.events.push({ t: 'banner', text: '', sub: `✦ 유니크 무기 ${d.name}이(가) 떨어졌다!` });
+        }
+      }
       return;
     }
     if (this.rng() < ENEMIES[e.kind].dropRate * ITEM_DROP_MULT) {
@@ -1081,6 +1186,10 @@ export class Sim {
     e.hurt -= dt;
     e.stun -= dt;
     e.slow -= dt;
+    if (e.burn > 0 || e.bleed > 0) {
+      this.updateDot(e, dt);
+      if (e.hp <= 0) return;
+    }
     e.rush -= dt;
     e.taunt -= dt;
     e.timer -= dt;
@@ -1495,7 +1604,8 @@ export class Sim {
   }
 
   private explode(pr: Projectile) {
-    const kind = pr.kind === 'meteor' || pr.kind === 'fireball' || pr.kind === 'rain' ? pr.kind : 'orb';
+    // 업화의 지팡이 마법사의 구체는 작은 화염 폭발로 보인다
+    const kind = pr.kind === 'meteor' || pr.kind === 'fireball' || pr.kind === 'rain' ? pr.kind : pr.look === 'burn' ? 'fireOrb' : 'orb';
     this.events.push({ t: 'boom', x: pr.x, y: pr.y, r: pr.aoe, kind, shake: kind === 'meteor' });
     const by = this.playerById(pr.ownerId);
     for (const e of this.enemies) {
@@ -1574,11 +1684,11 @@ export class Sim {
     // 화면에 필요한 값만 골라 반올림해서 보낸다 (스냅샷은 초당 20번, 참가자마다 전송된다)
     const enemyView = (e: Enemy): EnemyView => ({
       id: e.id, kind: e.kind, elite: e.elite, x: r(e.x), y: r(e.y), r: e.r, aim: r2(e.aim),
-      hp: e.hp, maxHp: e.maxHp, hurt: r2(Math.max(0, e.hurt)), stun: r2(Math.max(0, e.stun)), slow: r2(Math.max(0, e.slow)),
+      hp: e.hp, maxHp: e.maxHp, hurt: r2(Math.max(0, e.hurt)), stun: r2(Math.max(0, e.stun)), slow: r2(Math.max(0, e.slow)), burn: r2(Math.max(0, e.burn)), bleed: r2(Math.max(0, e.bleed)),
       taunt: r2(Math.max(0, e.taunt)), state: e.state, timer: r2(e.timer), z: r(e.z), tx: r(e.tx), ty: r(e.ty),
     });
     const projView = (p: Projectile): ProjectileView => ({
-      id: p.id, kind: p.kind, x: r(p.x), y: r(p.y), z: r(p.z), vx: r(p.vx), vy: r(p.vy), vz: r(p.vz), r: p.r, life: r2(p.life), aoe: p.aoe,
+      id: p.id, kind: p.kind, x: r(p.x), y: r(p.y), z: r(p.z), vx: r(p.vx), vy: r(p.vy), vz: r(p.vz), r: p.r, life: r2(p.life), aoe: p.aoe, ...(p.look ? { look: p.look } : {}),
     });
     return {
       tick: this.tick,

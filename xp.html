@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>경험치 표 · Act RPG</title>
+</head>
+<body>
+  <header>
+    <h1>ACT RPG 정보</h1>
+    <a href="./classes.html">직업 능력치</a>
+    <a href="./monsters.html">몬스터 도감</a>
+    <a href="./items.html">아이템 도감</a>
+    <a href="./xp.html" class="on">경험치 표</a>
+    <a href="./index.html">← 게임으로</a>
+  </header>
+  <main>
+    <div class="controls">
+      <label>일반 몬스터 처치 비율 <input type="range" id="rate" min="0" max="100" step="5" value="100" style="width:180px" /> <b id="rate-v">100%</b></label>
+      <span class="muted">(중간보스·문지기는 모두 잡는다고 본다)</span>
+    </div>
+    <div id="out"></div>
+    <p class="note" id="note"></p>
+  </main>
+  <script type="module" src="/src/pages/xp.ts"></script>
+</body>
+</html>

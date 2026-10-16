@@ -29,6 +29,11 @@ export class Effects {
     switch (e.t) {
       case 'dmg': {
         const p = at(e.x, e.y);
+        if (e.dot) {
+          // 화염·출혈 지속 피해: 작은 주황·빨간 숫자
+          this.floatText(p.x + 14, p.y + 6, String(e.v), e.dot === 'burn' ? '#ff9a40' : '#ff4a5a', 12);
+          break;
+        }
         if (e.crit && !e.toPlayer) {
           // 치명타: 큰 주황 숫자가 튀어나오고 위에 '치명타!', 맞은 자리에 불꽃
           this.popText(p.x, p.y - 4, String(e.v), '#ffb020', 26, 900);
@@ -37,6 +42,9 @@ export class Effects {
         } else this.floatText(p.x, p.y, String(e.v), e.toPlayer ? '#ff5050' : '#ffffff', 15);
         break;
       }
+      case 'proc':
+        w.fx.procHit(e.effect, e.x, e.y);
+        break;
       case 'dodge': {
         // 회피: 하늘색 '회피!'가 튀어나오고 몸 주위에 바람 고리
         const p = at(e.x, e.y, 60);
@@ -89,7 +97,11 @@ export class Effects {
         break;
       case 'swing':
         this.swingArc(e.x, e.y, e.aim, e.range, e.arc, e.enemy ? 0xff5040 : 0xffffff);
-        if (!e.enemy) w.fx.slash(e.x, e.y, e.aim, e.range, e.arc, 0xdff0ff); // 플레이어 근접 공격은 공중에 칼자국
+        if (!e.enemy) {
+          // 플레이어 근접 공격은 공중에 칼자국 (선혈의 검은 핏빛, 대지 분쇄 도끼는 흙빛)
+          w.fx.slash(e.x, e.y, e.aim, e.range, e.arc, e.look === 'bleed' ? 0xff2a3a : e.look === 'quake' ? 0xe0a050 : 0xdff0ff);
+          if (e.look) w.fx.slashFx(e.x, e.y, e.aim, e.range, e.look);
+        }
         break;
       case 'levelup': {
         const pos = playerPos(e.pid);

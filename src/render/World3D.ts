@@ -976,8 +976,10 @@ export class World3D {
   private updateEnemyChar(ch: Char, e: EnemyView, dt: number) {
     const moved = this.placeChar(ch, e.x, e.y, e.aim, (e.z * U) * (e.kind === 'slime' ? 1.5 : 0.6)); // 슬라임은 통통 튀어 오른다
     const blink = e.hurt > 0 || (e.state === 'windup' && Math.floor(this.clock * 12) % 2 === 0);
-    // 냉기 파동으로 느려진 적은 푸르게 언 빛
+    // 냉기 파동·서리로 느려진 적은 푸르게 언 빛, 불타는 적은 주황, 출혈은 붉게
     if (!blink && e.slow > 0) this.flash(ch, true, 0x4a90ff);
+    else if (!blink && e.burn > 0) this.flash(ch, Math.floor(this.clock * 8) % 2 === 0, 0xff6a10);
+    else if (!blink && e.bleed > 0) this.flash(ch, true, 0x8a1020);
     else this.flash(ch, blink, e.hurt > 0 ? 0xffffff : 0xff3020);
     // 맞은 순간 움찔하는 동작이 있는 모델(슬라임)은 그 동작을 한 번 보여준다 (hurt는 맞으면 0.12초에서 줄어든다)
     if (e.hurt > 0.08 && ch.actions.has('hurt') && ch.current !== 'hurt') this.play(ch, 'hurt', true);
@@ -1027,6 +1029,18 @@ export class World3D {
         const model = this.models.get('arrowModel')!.scene.clone();
         model.rotation.y = Math.PI;
         model.scale.setScalar(pr.r > 7 ? 0.95 : 0.7);
+        if (pr.look === 'frost') {
+          // 서리바람 활: 화살을 얼음빛으로 칠하고 스스로 은은하게 빛나게 한다 (재질은 복사해서 다른 화살은 그대로)
+          model.traverse((o) => {
+            const mesh = o as THREE.Mesh;
+            if (!mesh.isMesh) return;
+            const m = (mesh.material as THREE.MeshStandardMaterial).clone();
+            m.color.lerp(new THREE.Color(0xbfefff), 0.75);
+            m.emissive = new THREE.Color(0x3aa8ff);
+            m.emissiveIntensity = 0.9;
+            mesh.material = m;
+          });
+        }
         const g = new THREE.Group();
         g.add(model);
         if (pr.kind === 'rain') g.rotation.x = Math.PI / 2; // 화살비는 촉이 아래로
@@ -1037,7 +1051,7 @@ export class World3D {
           new THREE.CylinderGeometry(0.025, 0.025, 0.55, 5).rotateX(Math.PI / 2),
           new THREE.MeshStandardMaterial({ color: 0xff6a50 }),
         );
-      case 'orb': return glow(0xc89aff, 0.18);
+      case 'orb': return pr.look === 'burn' ? glow(0xff6a20, 0.2) : glow(0xc89aff, 0.18); // 업화의 지팡이는 불덩이
       case 'iceOrb': return glow(0x9ae4ff, 0.2); // 얼음 마녀의 냉기 구슬
       case 'rock': // 고블린 투척병의 돌
         return new THREE.Mesh(new THREE.DodecahedronGeometry(0.12), new THREE.MeshStandardMaterial({ color: 0x8a8070, roughness: 0.9 }));

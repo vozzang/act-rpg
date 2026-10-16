@@ -2,7 +2,7 @@
 // 방향패드로 고르고 A로 실행, X로 버리기, B로 닫는다. 마우스는 줄 클릭 = 실행, 오른쪽 클릭 = 버리기. 터치는 줄을 누르고 [버리기] 버튼.
 // 온라인이라 게임은 멈추지 않는다.
 import Phaser from 'phaser';
-import { ATTR_DESC, ATTR_KEYS, ATTR_NAMES, BAG_SIZE, CLASSES, FOOD, INV_SIZE, RARITY, VIEW_W, itemName, itemStatText } from '../game/data';
+import { ATTR_DESC, ATTR_KEYS, ATTR_NAMES, BAG_SIZE, CLASSES, FOOD, INV_SIZE, RARITY, VIEW_W, canEquip, itemName, itemStatText } from '../game/data';
 import type { AttrKey, InvSlot, Item, Player } from '../game/types';
 import type { Device } from './Hud';
 import { makeText } from './ui';
@@ -192,6 +192,7 @@ export class CharMenu {
     }
     if (this.col === 2) {
       const it = (me.bag ?? [])[this.row];
+      if (it && !canEquip(me.cls, it)) return `${CLASSES[it.cls!].name}만 착용할 수 있다 — 버려서 동료에게 넘겨줄 수 있다 · ${itemStatText(it)}`;
       return it ? `실행: 꺼내서 착용 (아이템 상자로) — ${itemStatText(it)}` : '빈 칸 — 아이템 상자의 장비를 고르고 실행하면 가방에 넣는다';
     }
     const sl = me.inv[this.row];
@@ -203,6 +204,8 @@ export class CharMenu {
 }
 
 function itemLine(it: Item, me: Player) {
+  // 다른 직업 전용 장비는 회색으로, 누구 것인지 붙여 보여 준다
+  if (!canEquip(me.cls, it)) return { text: `[${RARITY[it.rarity].name}] ${itemName(it, me.cls)} (${CLASSES[it.cls!].name} 전용)`, color: '#8a8a8a' };
   return { text: `[${RARITY[it.rarity].name}] ${itemName(it, me.cls)}`, color: RARITY[it.rarity].color };
 }
 

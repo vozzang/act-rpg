@@ -16,14 +16,16 @@ export const ATTR_EFFECT = {
   dexCrit: 0.004, // 민첩 1당 치명타 확률
   dexHaste: 0.0025, // 민첩 1당 공격 속도
   dexDodge: 0.0025, // 민첩 1당 회피 확률 (최대 DODGE_MAX)
-  intCdr: 0.008, // 지능 1당 스킬 재사용 가속
+  intCdr: 0.008, // 지능 1당 스킬 재사용 가속 (최대 CDR_MAX)
   intHeal: 0.01, // 지능 1당 회복량 증가
   intMp: 3, // 지능 1당 최대 MP
-  intMpRegen: 0.05, // 지능 1당 초당 MP 회복
+  intMpRegen: 0.03, // 지능 1당 초당 MP 회복
 };
 
 /** 회피 확률 상한 (민첩을 아무리 올려도 이 이상은 피하지 못한다) */
 export const DODGE_MAX = 0.25;
+/** 스킬 가속 상한 (+100% = 재사용 대기시간 절반). 지능 장비를 겹쳐도 스킬을 끝없이 쓰지 못하게 */
+export const CDR_MAX = 1;
 
 export const ATTR_DESC: Record<AttrKey, string> = {
   str: '검사·수호자 공격력, 방어',
@@ -56,7 +58,7 @@ export function deriveStats(cls: ClassId, level: number, attrs: Attrs, items: (I
     crit: Math.min(0.75, def.bonus.crit + attrs.dex * e.dexCrit + sum('crit')),
     haste: attrs.dex * e.dexHaste,
     dodge: Math.min(DODGE_MAX, attrs.dex * e.dexDodge),
-    cdr: attrs.int * e.intCdr,
+    cdr: Math.min(CDR_MAX, attrs.int * e.intCdr),
     maxMp: Math.round(def.bonus.mp + attrs.int * e.intMp + (level - 1) * def.bonus.mpLv),
     mpRegen: def.bonus.mpRegen + attrs.int * e.intMpRegen,
   };

@@ -1,7 +1,7 @@
 // 화면에 고정된 정보: 파티 패널, 내 정보창, 능력치 버튼, 스킬 바, 아이템 상자, 보스 체력, 화면 밖 동료 표시
 import Phaser from 'phaser';
 import {
-  ATTR_KEYS, ATTR_NAMES, CLASSES, ENEMIES, FOOD, INV_SIZE, RARITY, VIEW_H, VIEW_W, itemName, itemStatText, passiveText,
+  ATTR_KEYS, ATTR_NAMES, CLASSES, ENEMIES, FOOD, INV_SIZE, RARITY, VIEW_H, VIEW_W, itemName, itemStatText, passiveText, skillMpCost,
 } from '../game/data';
 import type { AttrKey, InvSlot, Player, Snapshot } from '../game/types';
 import { makeText } from './ui';
@@ -206,7 +206,8 @@ export class Hud {
       const locked = me.level < sk.unlock;
       const cd = Math.max(0, me.skillCds[i]);
       const cdMax = sk.cd / (1 + me.stats.cdr);
-      const noMp = me.mp < sk.mp;
+      const cost = skillMpCost(sk, me.level);
+      const noMp = me.mp < cost;
       const ultimate = i === skills.length - 1;
       g.fillStyle(locked ? 0x1a1a1a : ultimate ? 0x3a2a10 : 0x1e2a3a, 0.9).fillRoundedRect(x, y, w, h, 6);
       if (!locked && cd > 0) {
@@ -219,11 +220,11 @@ export class Hud {
       g.lineStyle(2, ready ? (ultimate ? 0xffb030 : 0xffd040) : 0x445566, ready ? 1 : 0.7).strokeRoundedRect(x, y, w, h, 6);
       t.name.setText(locked ? `🔒\nLv.${sk.unlock}` : sk.name).setColor(locked ? '#777777' : '#ffffff');
       t.info
-        .setText(locked ? '' : cd > 0 ? `${cd.toFixed(1)}초` : `MP ${sk.mp}`)
+        .setText(locked ? '' : cd > 0 ? `${cd.toFixed(1)}초` : `MP ${cost}`)
         .setColor(cd > 0 ? '#ffffff' : noMp ? '#ff7070' : '#8fb4ff');
       if (inside({ x, y, w, h }, ptr.x, ptr.y)) {
         const ult = ultimate ? '  ★최종 스킬' : '';
-        tip = { text: `[${i + 1}] ${sk.name}${ult}\nMP ${sk.mp} · 재사용 ${sk.cd}초 · Lv.${sk.unlock}에 배움\n${sk.desc}`, x: x + w / 2, y };
+        tip = { text: `[${i + 1}] ${sk.name}${ult}\nMP ${cost} (레벨마다 늘어남) · 재사용 ${sk.cd}초 · Lv.${sk.unlock}에 배움\n${sk.desc}`, x: x + w / 2, y };
       }
     });
     return tip;
@@ -279,7 +280,10 @@ function slotColor(sl: InvSlot | null): number {
 function slotLabel(sl: InvSlot | null, me: Player): string {
   if (!sl) return '';
   if (sl.kind !== 'item') return sl.kind === 'hpFood' ? 'HP' : 'MP';
-  return itemName(sl.item, me.cls).split(' ').pop()!;
+  // 마지막 낱말 (예: '강철 대검' → '대검'). 조합 장비의 단계 숫자(Ⅰ~Ⅴ)는 건너뛴다 ('거인의 대검 Ⅴ' → '대검')
+  const words = itemName(sl.item, me.cls).split(' ');
+  const last = words[words.length - 1];
+  return /^[ⅠⅡⅢⅣⅤ]$/.test(last) && words.length > 1 ? `${words[words.length - 2]}${last}` : last;
 }
 
 function slotTooltip(sl: InvSlot, me: Player, key: string): string {
