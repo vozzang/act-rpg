@@ -250,6 +250,7 @@ function startGame(seed: number, players: LobbyPlayer[]) {
   session = {
     role, myId, seed, players: players.map((p) => ({ ...p })), host, client,
     skipStory: $<HTMLInputElement>('skip-story').checked,
+    startLevel: import.meta.env.DEV ? Number($<HTMLInputElement>('dev-level').value) || 1 : undefined,
     backToLobby: () => {
       host?.broadcast({ t: 'toLobby' });
       endGame();
@@ -307,7 +308,25 @@ const params = new URLSearchParams(location.search);
 const roomParam = params.get('room');
 if (roomParam) $<HTMLInputElement>('code').value = roomParam.toUpperCase();
 
-// 개발 중에만: ?autostart=elf&seed=1 로 로비를 건너뛰고 바로 혼자 시작한다.
+// 개발 중에만: 로비의 '시작 레벨' (이 브라우저에 기억). ?level=10 으로도 정할 수 있다
+if (import.meta.env.DEV) {
+  const lv = $<HTMLInputElement>('dev-level');
+  $('dev-level-row').hidden = false;
+  try {
+    lv.value = params.get('level') ?? localStorage.getItem('actrpg-dev-level') ?? '1';
+  } catch {
+    /* 무시 */
+  }
+  lv.onchange = () => {
+    try {
+      localStorage.setItem('actrpg-dev-level', lv.value);
+    } catch {
+      /* 무시 */
+    }
+  };
+}
+
+// 개발 중에만: ?autostart=elf&seed=1 로 로비를 건너뛰고 바로 혼자 시작한다 (&level=10 을 붙이면 10레벨로).
 const autostart = params.get('autostart') as ClassId | null;
 if (import.meta.env.DEV && autostart && autostart in CLASSES) {
   role = 'solo';

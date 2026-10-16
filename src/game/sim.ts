@@ -15,6 +15,7 @@ import {
 /** 투사체를 쏘는 기본 공격 설정 (궁수·마법사) */
 type ProjectileAttack = Extract<AttackDef, { kind: 'projectile' }>;
 
+const DEV_MAX_LEVEL = 60; // 개발용 레벨 조정(setLevel)의 최고 레벨
 const NAV_EVERY = 15; // 길찾기 지도 갱신 주기 (틱)
 const SNAPSHOT_RADIUS = 520; // 플레이어로부터 이 거리 안의 엔티티만 전송 (화면 대각선 + 여유)
 const CHILL_TIME = 2; // 얼음 마녀의 냉기 구슬에 맞으면 이 시간 동안
@@ -148,6 +149,33 @@ export class Sim {
     this.recalcStats(p);
   }
 
+  /**
+   * 개발용: 레벨을 바로 바꾼다 (개발 서버에서만 부른다). 경험치는 0부터, HP·MP는 가득 채운다.
+   * 레벨업 포인트는 (레벨 − 1) × POINTS_PER_LEVEL 만큼 갖게 되며, 이미 배분한 포인트가 그보다 많으면(레벨을 내렸을 때) 배분을 모두 되돌린다.
+   */
+  setLevel(id: string, level: number) {
+    const p = this.playerById(id);
+    if (!p) return;
+    const lv = Math.max(1, Math.min(DEV_MAX_LEVEL, Math.round(level)));
+    const prev = p.level;
+    const total = (lv - 1) * POINTS_PER_LEVEL;
+    const used = ATTR_KEYS.reduce((s, k) => s + p.alloc[k], 0);
+    if (used > total) p.alloc = { str: 0, dex: 0, int: 0, vit: 0 };
+    p.points = total - (used > total ? 0 : used);
+    p.level = lv;
+    p.xp = 0;
+    p.xpNext = xpForLevel(lv);
+    this.recalcStats(p);
+    if (!p.dead) {
+      p.hp = p.stats.maxHp;
+      p.mp = p.stats.maxMp;
+    }
+    if (lv > prev) this.events.push({ t: 'levelup', pid: p.id, level: lv });
+    // 새로 배운 스킬을 알린다 (스킬 사용 가능 여부는 레벨로 정해지므로 따로 할 일은 없다)
+    CLASSES[p.cls].skills.forEach((sk, idx) => sk.unlock > prev && sk.unlock <= lv && this.events.push({ t: 'unlock', pid: p.id, idx }));
+    this.notice(p, `[개발] 레벨 ${lv}${used > total ? ' · 배분한 포인트를 되돌렸어요' : ''}`);
+  }
+
   // ─── 메인 루프 ──────────────────────────────────────
 
   step(dt: number) {
@@ -274,12 +302,42 @@ export class Sim {
       this.meleeArc(p, a.range, a.arc, a.mult, a.knock, 0);
     } else {
       const d = this.rollDamage(p, a.mult);
-      this.projectiles.push(this.playerProjectile(p, {
-        kind: a.proj, ang: p.aim, speed: a.speed, range: a.range, arcHeight: a.arcHeight,
+      // 자동 조준: 조준 방향 앞의 적을 골라 그쪽으로 쏘고, 날아가는 동안 따라간다
+      const target = a.assist ? this.assistTarget(p, a.range, a.assist.cone) : null;
+      const ang = target ? Math.atan2(target.y - p.y, target.x - p.x) : p.aim;
+      if (target) p.aim = ang; // 캐릭터도 쏜 쪽을 바라본다 (다음 입력이 오면 다시 바뀐다)
+      const pr = this.playerProjectile(p, {
+        kind: a.proj, ang, speed: a.speed, range: a.range, arcHeight: a.arcHeight,
         r: a.proj === 'orb' ? 9 : 6, aoe: a.aoe, dmg: d.v, crit: d.crit, pierce: false,
-      }));
+      });
+      if (target && a.assist) {
+        pr.homing = target.id;
+        pr.turn = a.assist.turn;
+      }
+      this.projectiles.push(pr);
       this.events.push({ t: 'shoot', x: p.x, y: p.y, kind: a.proj, enemy: false });
     }
+  }
+
+  /**
+   * 자동 조준 대상: 조준 방향 좌우 cone 안, 사거리 안에서 벽에 가리지 않은 적.
+   * 가까울수록, 조준 방향 정면에 가까울수록 먼저 고른다. 없으면 null.
+   */
+  private assistTarget(p: Player, range: number, cone: number): Enemy | null {
+    let best: Enemy | null = null;
+    let bestScore = Infinity;
+    for (const e of this.enemies) {
+      if (!e.active || e.hp <= 0 || e.z > 30) continue;
+      const d = dist(p.x, p.y, e.x, e.y);
+      if (d - e.r > range) continue;
+      const off = Math.abs(angleDiff(Math.atan2(e.y - p.y, e.x - p.x), p.aim));
+      if (off > cone) continue;
+      const score = d * (1 + 2 * off);
+      if (score >= bestScore || !lineOfSight(this.level, p.x, p.y, e.x, e.y)) continue;
+      best = e;
+      bestScore = score;
+    }
+    return best;
   }
 
   /** 플레이어 앞(또는 주변) 부채꼴 안의 적을 친다. arc가 π 이상이면 360도. */
@@ -1323,6 +1381,7 @@ export class Sim {
     const alive: Projectile[] = [];
     for (const pr of this.projectiles) {
       pr.life -= dt;
+      if (pr.homing !== undefined) this.steer(pr, dt);
       pr.x += pr.vx * dt;
       pr.y += pr.vy * dt;
       pr.z += pr.vz * dt;
@@ -1380,6 +1439,22 @@ export class Sim {
       if (!gone) alive.push(pr);
     }
     this.projectiles = alive;
+  }
+
+  /** 자동 조준된 투사체를 따라가는 적 쪽으로 조금씩 꺾는다. 적이 쓰러지거나 사라지면 그대로 곧게 날아간다 */
+  private steer(pr: Projectile, dt: number) {
+    const e = this.enemies.find((x) => x.id === pr.homing);
+    if (!e || !e.active || e.hp <= 0) {
+      pr.homing = undefined;
+      return;
+    }
+    const cur = Math.atan2(pr.vy, pr.vx);
+    const want = Math.atan2(e.y - pr.y, e.x - pr.x);
+    const diff = angleDiff(want, cur);
+    const step = Math.max(-(pr.turn ?? 0) * dt, Math.min((pr.turn ?? 0) * dt, diff));
+    const s = Math.hypot(pr.vx, pr.vy);
+    pr.vx = Math.cos(cur + step) * s;
+    pr.vy = Math.sin(cur + step) * s;
   }
 
   private explode(pr: Projectile) {

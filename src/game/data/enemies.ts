@@ -28,13 +28,13 @@ export interface EnemyDef {
 
 // 몬스터가 많은 대신 마리당 경험치·돈·장비 드랍은 낮게 잡았다 (한 판 동안 얻는 총량이 너무 커지지 않도록)
 export const ENEMIES: Record<EnemyKind, EnemyDef> = {
-  slime: { name: '슬라임', ai: 'hop', r: 13, height: 22, hp: 40, atk: 9, def: 0, speed: 65, xp: 7, gold: 3, dropRate: 0.09 },
-  goblin: { name: '고블린', ai: 'melee', r: 11, height: 36, hp: 62, atk: 13, def: 2, speed: 110, xp: 12, gold: 4, dropRate: 0.13 },
-  skeleton: { name: '해골 궁수', ai: 'ranged', r: 11, height: 46, hp: 52, atk: 11, def: 1, speed: 58, xp: 15, gold: 6, dropRate: 0.17 },
-  orc: { name: '오크 전사', ai: 'heavy', heavy: true, knock: 0.35, r: 15, height: 56, hp: 200, atk: 20, def: 6, speed: 72, xp: 36, gold: 18, dropRate: 0.5 },
-  boss: { name: '흑룡', ai: 'boss', r: 40, height: 110, hp: 10000, atk: 100, def: 50, speed: 85, xp: 0, gold: 0, dropRate: 1 },
+  slime: { name: '슬라임', ai: 'hop', r: 13, height: 22, hp: 40, atk: 9, def: 0, speed: 50, xp: 7, gold: 3, dropRate: 0.09 },
+  goblin: { name: '고블린', ai: 'melee', r: 11, height: 36, hp: 62, atk: 13, def: 2, speed: 100, xp: 12, gold: 4, dropRate: 0.13 },
+  skeleton: { name: '해골 궁수', ai: 'ranged', r: 11, height: 46, hp: 52, atk: 11, def: 1, speed: 55, xp: 15, gold: 6, dropRate: 0.17 },
+  orc: { name: '오크 전사', ai: 'heavy', heavy: true, knock: 0.35, r: 15, height: 56, hp: 200, atk: 20, def: 6, speed: 65, xp: 36, gold: 18, dropRate: 0.5 },
+  boss: { name: '흑룡', ai: 'boss', r: 40, height: 110, hp: 10000, atk: 100, def: 50, speed: 75, xp: 0, gold: 0, dropRate: 1 },
   // 1구역: 작고 빠른 졸개 무리, 돌을 던지는 투척병
-  hound: { name: '퍼그 졸개', ai: 'melee', r: 10, height: 30, hp: 34, atk: 8, def: 0, speed: 150, xp: 6, gold: 2, dropRate: 0.06 },
+  hound: { name: '퍼그 졸개', ai: 'melee', r: 10, height: 30, hp: 34, atk: 8, def: 0, speed: 120, xp: 6, gold: 2, dropRate: 0.06 },
   thrower: { name: '고블린 투척병', ai: 'ranged', r: 11, height: 34, hp: 45, atk: 10, def: 1, speed: 70, xp: 13, gold: 5, dropRate: 0.12 },
   // 2구역: 튼튼한 산적, 멀리서 돌진해 베는 암살자
   bandit: { name: '협곡 산적', ai: 'melee', r: 12, height: 44, hp: 110, atk: 15, def: 3, speed: 95, xp: 20, gold: 9, dropRate: 0.2 },

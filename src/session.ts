@@ -12,6 +12,8 @@ export interface Session {
   players: LobbyPlayer[]; // 참가자와 고른 직업
   /** 이 플레이어가 로비에서 '스토리 건너뛰기'를 골랐는지 (스토리는 플레이어마다 따로 본다) */
   skipStory: boolean;
+  /** 개발용: 모든 플레이어의 시작 레벨 (개발 서버 로비의 '시작 레벨', 방장·혼자만 쓴다). 없으면 1 */
+  startLevel?: number;
   host?: HostNet; // 방장일 때 네트워크
   client?: ClientNet; // 참가자일 때 네트워크
   /** 호스트/솔로가 '로비로' 버튼을 눌렀을 때 */

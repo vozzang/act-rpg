@@ -171,6 +171,8 @@ export interface Projectile {
   aoe: number; // 폭발 반지름 (0이면 터지지 않는다)
   pierce: boolean; // 적을 뚫고 지나가는지
   hitIds: number[]; // 관통 투사체가 이미 맞힌 적
+  homing?: number; // 따라가는 적 id (자동 조준된 궁수 기본 공격)
+  turn?: number; // 따라갈 때 초당 최대로 꺾이는 각도 (라디안)
 }
 
 /** 바닥에 떨어진 물건 */

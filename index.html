@@ -93,6 +93,8 @@
       </div>
       <label class="check">효과음 크기 <input type="range" id="volume" min="0" max="100" step="5" style="width:160px;height:auto" /> <span id="volume-v" class="hint" style="margin:0"></span></label>
       <label class="check"><input type="checkbox" id="skip-story" /> 스토리 건너뛰기 <span class="hint" style="margin:0">(인트로·구역 이야기·엔딩을 보지 않는다. 게임 중에도 건너뛸 수 있다)</span></label>
+      <!-- 개발 서버에서만 보인다 (main.ts) -->
+      <label class="check" id="dev-level-row" hidden>🛠 시작 레벨 <input type="number" id="dev-level" min="1" max="60" value="1" style="width:70px" /> <span class="hint" style="margin:0">(개발용: 모든 플레이어가 이 레벨로 시작. 게임 중 ] 올리기 · [ 내리기, Shift와 함께 5씩)</span></label>
       <div class="row">
         <button id="btn-create" class="primary">방 만들기</button>
         <button id="btn-solo">혼자 하기</button>

@@ -7,6 +7,8 @@
 import Phaser from 'phaser';
 import { ATTR_KEYS, ATTR_NAMES, CLASSES, ELITE, ENEMIES, INV_SIZE, RARITY, REVIVE_TIME, SHOP, SHOP_TYPES, SNAPSHOT_EVERY, TICK_RATE, itemName, itemStatText } from '../game/data';
 import { gameLevel } from '../game/world';
+import { lineOfSight } from '../game/physics';
+import type { Level } from '../game/level';
 import { Sim } from '../game/sim';
 import { EMPTY_INPUT, type AttrKey, type GameEvent, type InputState, type Player, type Shop, type Snapshot } from '../game/types';
 import type { Session } from '../session';
@@ -77,6 +79,8 @@ export class GameScene extends Phaser.Scene {
   // 키보드·마우스 조준 방식: 마우스를 움직이면 'mouse', 방향키를 누르면 'move'(이동 방향으로 공격)
   private aimMode: 'mouse' | 'move' = 'move';
   private lastAim = 0;
+  /** 맵 (자동 조준이 벽 너머 적을 고르지 않게 쓴다. 열린 문은 World3D가 반영한다) */
+  private level!: Level;
 
   constructor() {
     super('game');
@@ -89,6 +93,7 @@ export class GameScene extends Phaser.Scene {
   create() {
     const s = this.session;
     const level = gameLevel();
+    this.level = level;
 
     this.world = new World3D(this.game.canvas, level);
     const destroyWorld = () => this.world.destroy();
@@ -119,7 +124,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     const kb = this.input.keyboard!;
-    this.keys = kb.addKeys('W,A,S,D,UP,DOWN,LEFT,RIGHT,J,K,Z,X,C,Q,R,I,SPACE,E,F,ENTER,ESC,DELETE,TAB,M,ONE,TWO,THREE,FOUR,FIVE,SIX,SEVEN,EIGHT,NINE,ZERO,SHIFT') as Record<string, Phaser.Input.Keyboard.Key>;
+    this.keys = kb.addKeys('W,A,S,D,UP,DOWN,LEFT,RIGHT,J,K,Z,X,C,Q,R,I,SPACE,E,F,ENTER,ESC,DELETE,TAB,M,ONE,TWO,THREE,FOUR,FIVE,SIX,SEVEN,EIGHT,NINE,ZERO,SHIFT,OPEN_BRACKET,CLOSED_BRACKET') as Record<string, Phaser.Input.Keyboard.Key>;
     kb.addCapture('SPACE,UP,DOWN,LEFT,RIGHT,TAB');
     this.input.mouse?.disableContextMenu();
     kb.on('keydown', () => (this.device = 'kbm'));
@@ -136,6 +141,8 @@ export class GameScene extends Phaser.Scene {
       this.sim = new Sim(s.seed, s.players);
       // 개발 중 콘솔에서 상태를 살펴볼 수 있게 노출 (sim: 게임 상태, scene: 화면·입력)
       if (import.meta.env.DEV) Object.assign(window, { sim: this.sim, scene: this });
+      // 개발용 시작 레벨: 모든 플레이어를 그 레벨로
+      if (import.meta.env.DEV && (s.startLevel ?? 1) > 1) for (const p of s.players) this.sim.setLevel(p.id, s.startLevel!);
       s.onRemoteInput = (id, input) => this.sim!.setInput(id, input);
       s.onRemoteAlloc = (id, attr) => this.sim!.allocate(id, attr);
       s.onRemoteBuy = (id, shop, idx) => this.sim!.buy(id, shop, idx);
@@ -379,7 +386,8 @@ export class GameScene extends Phaser.Scene {
 
   /**
    * 게임패드 자동 조준: ref 방향 앞쪽 부채꼴(좌우 70°) 안에서 사거리 안의 가장 가까운 적.
-   * 각도가 많이 벌어진 적일수록 덜 고른다. 없으면 null.
+   * 각도가 많이 벌어진 적일수록 덜 고르고, 벽 너머의 적은 고르지 않는다. 없으면 null.
+   * (궁수 화살은 쏠 때 sim이 한 번 더 자동 조준한다 — CLASSES.elf.attack.assist)
    */
   private autoAim(ref: number): number | null {
     const me = this.me;
@@ -396,7 +404,7 @@ export class GameScene extends Phaser.Scene {
       const off = Math.abs(Math.atan2(Math.sin(ang - ref), Math.cos(ang - ref)));
       if (off > cone) continue;
       const score = d * (1 + off);
-      if (score < bestScore) {
+      if (score < bestScore && lineOfSight(this.level, me.x, me.y, e.x, e.y)) {
         bestScore = score;
         best = ang;
       }
@@ -412,6 +420,13 @@ export class GameScene extends Phaser.Scene {
    */
   private readHotkeys() {
     const k = this.keys;
+    // 개발용: ] 레벨 올리기, [ 내리기 (Shift와 함께 누르면 5씩). 게임을 계산하는 방장·혼자 하기에서만
+    const mine = import.meta.env.DEV ? this.sim?.players.find((p) => p.id === this.session.myId) : undefined;
+    if (mine) {
+      const step = k.SHIFT.isDown ? 5 : 1;
+      if (Phaser.Input.Keyboard.JustDown(k.CLOSED_BRACKET)) this.sim!.setLevel(mine.id, mine.level + step);
+      if (Phaser.Input.Keyboard.JustDown(k.OPEN_BRACKET)) this.sim!.setLevel(mine.id, mine.level - step);
+    }
     [k.ONE, k.TWO, k.THREE, k.FOUR].forEach((key, i) => {
       if (k.SHIFT.isDown && Phaser.Input.Keyboard.JustDown(key)) this.allocate(ATTR_KEYS[i]);
     });

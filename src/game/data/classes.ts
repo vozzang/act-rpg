@@ -20,6 +20,9 @@ export type AttackDef =
       range: number; // 최대 비행 거리
       aoe: number; // 0보다 크면 터지면서 범위 피해
       arcHeight: number; // 포물선 최고 높이 (보이는 효과)
+      // 자동 조준: 쏠 때 조준 방향 좌우 cone(라디안) 안·사거리 안의 보이는 적을 골라 그쪽으로 쏘고,
+      // 날아가는 동안 초당 turn(라디안)까지 그 적을 따라 휜다. 없으면 조준 방향 그대로 날아간다
+      assist?: { cone: number; turn: number };
     };
 
 /** 스킬 하나의 이름·비용 (세부 수치는 SKILL) */
@@ -60,7 +63,7 @@ export const CLASSES: Record<ClassId, ClassDef> = {
     mainAttr: 'str',
     attrs: { str: 10, dex: 5, int: 3, vit: 7 },
     attrGrowth: { str: 1.25, dex: 0.5, int: 0, vit: 0.75 },
-    bonus: { hp: 56, atk: 6, def: 0.5, crit: 0.056, mp: 50, mpLv: 4, mpRegen: 2.5 },
+    bonus: { hp: 56, atk: 6, def: 1, crit: 0.056, mp: 50, mpLv: 4, mpRegen: 2.5 },
     attack: { kind: 'melee', cd: 0.32, mult: 1.0, range: 62, arc: 1.0, knock: 200 },
     skills: [
       { name: '돌진 베기', cd: 5, mp: 10, unlock: 1, desc: '조준 방향으로 돌진하며 지나가는 적을 벤다. 돌진 중 무적.' },
@@ -78,7 +81,7 @@ export const CLASSES: Record<ClassId, ClassDef> = {
     atkAttr: 'str',
     attrs: { str: 9, dex: 2, int: 2, vit: 12 },
     attrGrowth: { str: 0.75, dex: 0.25, int: 0.25, vit: 1.25 },
-    bonus: { hp: 104, atk: 4.8, def: 4.65, crit: 0.018, mp: 60, mpLv: 4, mpRegen: 2.5 },
+    bonus: { hp: 104, atk: 4, def: 4.65, crit: 0.018, mp: 60, mpLv: 4, mpRegen: 2.5 },
     attack: { kind: 'melee', cd: 0.6, mult: 1.4, range: 58, arc: 1.3, knock: 380 },
     skills: [
       { name: '도발', cd: 12, mp: 15, unlock: 1, desc: '주변 적의 시선을 끌고 4초간 받는 피해 60% 감소.' },
@@ -94,8 +97,8 @@ export const CLASSES: Record<ClassId, ClassDef> = {
     mainAttr: 'dex',
     attrs: { str: 4, dex: 12, int: 4, vit: 5 },
     attrGrowth: { str: 0.25, dex: 1.75, int: 0.25, vit: 0.25 },
-    bonus: { hp: 42, atk: 4.2, def: 0, crit: 0.106, mp: 55, mpLv: 5, mpRegen: 3 },
-    attack: { kind: 'projectile', cd: 0.42, mult: 0.9, speed: 520, proj: 'arrow', range: 480, aoe: 0, arcHeight: 60 },
+    bonus: { hp: 42, atk: 4.2, def: 1, crit: 0.106, mp: 55, mpLv: 5, mpRegen: 3 },
+    attack: { kind: 'projectile', cd: 0.42, mult: 0.9, speed: 520, proj: 'arrow', range: 480, aoe: 0, arcHeight: 60, assist: { cone: 0.7, turn: 6 } },
     skills: [
       { name: '부채 사격', cd: 6, mp: 12, unlock: 1, desc: '적을 관통하는 화살 5발을 부채꼴로 쏜다.' },
       { name: '저격', cd: 6, mp: 18, unlock: 4, desc: '멀리까지 꿰뚫는 강력한 화살 한 발. 공격력 3배.' },
@@ -110,7 +113,7 @@ export const CLASSES: Record<ClassId, ClassDef> = {
     mainAttr: 'int',
     attrs: { str: 3, dex: 4, int: 13, vit: 5 },
     attrGrowth: { str: 0, dex: 0, int: 2.75, vit: 0.25 },
-    bonus: { hp: 40, atk: 6.4, def: 0, crit: 0.044, mp: 40, mpLv: 6, mpRegen: 3 },
+    bonus: { hp: 40, atk: 6.4, def: 0.75, crit: 0.044, mp: 40, mpLv: 6, mpRegen: 3 },
     attack: { kind: 'projectile', cd: 0.75, mult: 1.2, speed: 340, proj: 'orb', range: 340, aoe: 70, arcHeight: 0 },
     skills: [
       { name: '치유의 빛', cd: 14, mp: 25, unlock: 1, desc: '주변 동료를 30% 회복하고 쓰러진 동료를 일으킨다.' },
