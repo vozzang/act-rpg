@@ -79,10 +79,10 @@ export function playEventSound(sfx: Sound, e: GameEvent, myId: string) {
       if (e.pid === myId) sfx.play('pickup', { volume: 0.5 });
       break;
     case 'heal':
-      sfx.play('drink1', { at, volume: 0.35 });
+      if (!e.passive) sfx.play('drink1', { at, volume: 0.35 }); // 패시브 흡혈은 자주 생겨 소리를 내지 않는다
       break;
     case 'mana':
-      sfx.play('drink2', { at, volume: 0.3 });
+      if (!e.passive) sfx.play('drink2', { at, volume: 0.3 });
       break;
     case 'notice':
       if (e.pid === myId) sfx.play('uiError', { volume: 0.45 });

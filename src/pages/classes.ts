@@ -2,7 +2,7 @@
 // 장비는 없는 상태로 계산한다. 레벨업 포인트를 어디에 배분하는지 고를 수 있다.
 import './pages.css';
 import {
-  ATTR_EFFECT, ATTR_KEYS, ATTR_NAMES, CLASSES, CLASS_ORDER, POINTS_PER_LEVEL, SKILL_UNLOCKS, deriveStats, totalAttrs, xpForLevel,
+  ATTR_EFFECT, ATTR_KEYS, ATTR_NAMES, CLASSES, CLASS_ORDER, POINTS_PER_LEVEL, SKILL_UNLOCKS, deriveStats, passiveText, totalAttrs, xpForLevel,
 } from '../game/data';
 import type { AttrKey, Attrs, ClassId } from '../game/types';
 
@@ -45,6 +45,7 @@ function table(c: ClassId, mode: AllocMode, maxLv: number) {
       ${ATTR_KEYS.map((k) => `<td class="${k === def.mainAttr || k === atkKey ? 'main' : ''}">${at[k]}</td>`).join('')}
       <td>${st.maxHp}</td><td>${st.maxMp}</td><td class="main">${st.atk}</td><td>${st.def}</td>
       <td>${pct(st.crit)}</td><td>${pct(st.dodge)}</td><td>+${pct(st.haste)}</td><td>+${pct(st.cdr)}</td><td>${st.mpRegen.toFixed(1)}</td>
+      <td class="l">${passiveText(c, lv)}</td>
       <td class="muted">${xpTotal.toLocaleString()}</td><td class="muted">${xpForLevel(lv).toLocaleString()}</td>
     </tr>`);
     xpTotal += xpForLevel(lv);
@@ -55,10 +56,11 @@ function table(c: ClassId, mode: AllocMode, maxLv: number) {
     <div class="sub">주 능력치 <b class="main">${ATTR_NAMES[def.mainAttr]}</b>${atkKey !== def.mainAttr ? ` · 공격은 <b class="main">${ATTR_NAMES[atkKey]}</b>` : ''}
       · 레벨당 자동 상승 ${ATTR_KEYS.map((k) => `${ATTR_NAMES[k]} +${def.attrGrowth[k]}`).join(', ')}
       · 이동 속도 ${def.speed} · 기본 공격 ${atk.kind === 'melee' ? `근접 (간격 ${atk.cd}초, 배율 ×${atk.mult}, 사거리 ${atk.range})` : `원거리 (간격 ${atk.cd}초, 배율 ×${atk.mult}, 사거리 ${atk.range}${atk.aoe ? `, 범위 ${atk.aoe}` : ''})`}<br />
-      스킬: ${def.skills.map((s) => `Lv${s.unlock} ${s.name} (MP ${s.mp}, ${s.cd}초)`).join(' · ')}</div>
+      스킬: ${def.skills.map((s) => `Lv${s.unlock} ${s.name} (MP ${s.mp}, ${s.cd}초)`).join(' · ')}<br />
+      패시브: <b>${def.passive.name}</b> — ${def.passive.desc}</div>
     <div class="scroll"><table>
       <thead><tr><th>레벨</th>${ATTR_KEYS.map((k) => `<th>${ATTR_NAMES[k]}</th>`).join('')}<th>최대 HP</th><th>최대 MP</th><th>공격</th><th>방어</th>
-        <th>치명</th><th>회피</th><th>공속</th><th>스킬가속</th><th>MP 회복/초</th><th>누적 경험치</th><th>다음 레벨까지</th></tr></thead>
+        <th>치명</th><th>회피</th><th>공속</th><th>스킬가속</th><th>MP 회복/초</th><th class="l">패시브</th><th>누적 경험치</th><th>다음 레벨까지</th></tr></thead>
       <tbody>${rows.join('')}</tbody>
     </table></div>
   </div>`;

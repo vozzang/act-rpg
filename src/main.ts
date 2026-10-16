@@ -1,7 +1,7 @@
 // 로비(방 만들기/참가/직업 선택)와 게임 시작/종료를 관리한다.
 import { Sound } from './render/Sound';
 import Phaser from 'phaser';
-import { ATTR_KEYS, ATTR_NAMES, CLASSES, CLASS_ORDER, VIEW_H, VIEW_W, deriveStats } from './game/data';
+import { ATTR_KEYS, ATTR_NAMES, CLASSES, CLASS_ORDER, VIEW_H, VIEW_W, deriveStats, passiveGrowthText } from './game/data';
 import type { ClassId, LobbyPlayer } from './game/types';
 import { ClientNet, HostNet, type ClientMsg, type HostMsg } from './net/net';
 import { GameScene } from './render/GameScene';
@@ -62,7 +62,7 @@ function renderRoom() {
       <div class="race"><span class="swatch" style="background:${hex(def.color)}"></span>${def.race}</div>
       <div class="name">${def.name}</div>
       <div class="desc">${def.desc}</div>
-      <div class="skill">${def.skills.map((sk, i) => `<div>Lv.${sk.unlock} ${i === 3 ? '★' : ''}<b>${sk.name}</b> <span class="mp">MP ${sk.mp}</span></div>`).join('')}</div>
+      <div class="skill">${def.skills.map((sk, i) => `<div>Lv.${sk.unlock} ${i === 3 ? '★' : ''}<b>${sk.name}</b> <span class="mp">MP ${sk.mp}</span></div>`).join('')}<div title="${def.passive.desc}">패시브 <b>${def.passive.name}</b> <span class="mp">${passiveGrowthText(id)}</span></div></div>
       <div class="stats">주 능력치: ${ATTR_NAMES[def.mainAttr]}${def.atkAttr && def.atkAttr !== def.mainAttr ? ` (공격은 ${ATTR_NAMES[def.atkAttr]})` : ''}<br />${attrs}<br />HP ${st.maxHp} · 공격 ${st.atk} · 방어 ${st.def} · 치명 ${Math.round(st.crit * 100)}% · 회피 ${Math.round(st.dodge * 100)}%</div>
       <div class="owner"></div>`;
     (card.querySelector('.owner') as HTMLElement).textContent = owner ? owner.name : '';

@@ -32,7 +32,9 @@ export const ENEMIES: Record<EnemyKind, EnemyDef> = {
   goblin: { name: '고블린', ai: 'melee', r: 11, height: 36, hp: 62, atk: 13, def: 2, speed: 100, xp: 12, gold: 4, dropRate: 0.13 },
   skeleton: { name: '해골 궁수', ai: 'ranged', r: 11, height: 46, hp: 52, atk: 11, def: 1, speed: 55, xp: 15, gold: 6, dropRate: 0.17 },
   orc: { name: '오크 전사', ai: 'heavy', heavy: true, knock: 0.35, r: 15, height: 56, hp: 200, atk: 20, def: 6, speed: 65, xp: 36, gold: 18, dropRate: 0.5 },
-  boss: { name: '흑룡', ai: 'boss', r: 40, height: 110, hp: 10000, atk: 100, def: 50, speed: 75, xp: 0, gold: 0, dropRate: 1 },
+  // 흑룡: 4인이 9·10구역 상점 장비를 대장간에서 조합한 전설 장비 6개씩을 갖춰야 겨우 이기도록 맞췄다.
+  // 방어가 매우 높아(한 대에 1500을 깎는다) 공격력이 낮은 장비로는 거의 피해를 주지 못한다 (봇 시험: 전설 6개 5/8 승, 전설 5+영웅 1 1/8, 그 아래 0)
+  boss: { name: '흑룡', ai: 'boss', r: 40, height: 110, hp: 90000, atk: 900, def: 3000, speed: 75, xp: 0, gold: 0, dropRate: 1 },
   // 1구역: 작고 빠른 졸개 무리, 돌을 던지는 투척병
   hound: { name: '퍼그 졸개', ai: 'melee', r: 10, height: 30, hp: 34, atk: 8, def: 0, speed: 120, xp: 6, gold: 2, dropRate: 0.06 },
   thrower: { name: '고블린 투척병', ai: 'ranged', r: 11, height: 34, hp: 45, atk: 10, def: 1, speed: 70, xp: 13, gold: 5, dropRate: 0.12 },
@@ -103,15 +105,21 @@ export const ELITE = {
   scale: 1.6, // 그려지는 크기
 };
 
-/** 구역이 깊어질수록 적이 강해진다. */
-// 구역별 적 능력치 배율 ([z - 1] = z구역). 앞 구역(1·2)도 얕보지 못하게 바닥을 올려 두었다
-const ZONE_HP = [1.4, 1.9, 2.15, 2.6, 3.0, 3.35, 3.7, 4.05, 4.4, 4.75];
-const ZONE_ATK = [1.3, 1.65, 1.85, 2.15, 2.4, 2.6, 2.8, 3.0, 3.2, 3.4];
-const ZONE_DEF = [1, 2, 2, 3, 3, 4, 4, 5, 5, 6];
+/**
+ * 구역이 깊어질수록 적이 강해진다. 구역별 적 능력치 배율 ([z - 1] = z구역): hp·atk는 곱하고, def는 더한다.
+ * 몬스터·중간보스·문지기에 모두 적용된다 (흑룡은 제외).
+ */
+// 뒤 구역일수록 가파르게 오른다: 상점 장비·대장간 조합으로 플레이어 공격력이 구역마다 크게 느는 만큼 몬스터도 따라간다.
+// 봇 시험(4인, 구역마다 상점 장비를 사고 짝수 구역에서 조합): 보스 방 도착 4/8, 나머지는 9·10구역에서 전멸. 장비를 안 사면 중간 구역에서 전멸한다
+export const ZONE_SCALE = {
+  hp: [1.4, 2.13, 3.18, 5.41, 8.76, 13.4, 19.68, 27.86, 38.19, 50.92],
+  atk: [1.3, 1.85, 2.74, 4.47, 7.01, 10.4, 14.9, 20.64, 27.78, 36.45],
+  def: [1, 2, 4, 7, 11, 16, 22, 30, 40, 52],
+};
 
 export function zoneScale(zone: number) {
-  const i = Math.max(0, Math.min(ZONE_HP.length - 1, zone - 1));
-  return { hp: ZONE_HP[i], atk: ZONE_ATK[i], def: ZONE_DEF[i], xp: 1 + 0.5 * (zone - 1) };
+  const i = Math.max(0, Math.min(ZONE_SCALE.hp.length - 1, zone - 1));
+  return { hp: ZONE_SCALE.hp[i], atk: ZONE_SCALE.atk[i], def: ZONE_SCALE.def[i], xp: 1 + 0.5 * (zone - 1) };
 }
 
 /** 인원수가 많을수록 적 체력이 늘어난다. */

@@ -53,7 +53,7 @@ export class Effects {
       }
       case 'heal': {
         const p = at(e.x, e.y);
-        this.floatText(p.x, p.y, `+${e.v}`, '#60ff80', 15);
+        this.floatText(p.x, p.y, `+${e.v}`, '#60ff80', e.passive ? 12 : 15); // 패시브 흡혈은 작게
         break;
       }
       case 'gold': {
@@ -80,7 +80,7 @@ export class Effects {
       }
       case 'mana': {
         const p = at(e.x, e.y);
-        this.floatText(p.x + 20, p.y, `+${e.v} MP`, '#80a8ff', 14);
+        this.floatText(p.x + 20, p.y, `+${e.v} MP`, '#80a8ff', e.passive ? 12 : 14);
         break;
       }
       case 'boom':

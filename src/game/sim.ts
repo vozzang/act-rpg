@@ -1,7 +1,7 @@
 // 게임 시뮬레이션. 호스트에서만 실행되고, 클라이언트는 스냅샷을 받아 그리기만 한다.
 import {
   AGGRO_RANGE, BAG_SIZE, FORGE, ITEM_DROP_MULT, TICK_RATE, ATTR_EFFECT, ATTR_KEYS, CLASSES, ELITE, ELITES, ENEMIES, GATE_KEEPERS, FOOD, INV_SIZE, POINTS_PER_LEVEL, REVIVE_TIME, SHOP, SKILL, TILE, ZONE_NAMES,
-  deriveStats, makeItem, partyHpScale, type EliteDef, shopStock, matchRecipe, recipeItem, randomForgeRarity, totalAttrs, xpForLevel, zoneScale, type AttackDef,
+  deriveStats, makeItem, partyHpScale, PASSIVE, arrowCount, ironSkinRate, lifestealRate, manaFlowRate, type EliteDef, shopStock, matchRecipe, recipeItem, randomForgeRarity, totalAttrs, xpForLevel, zoneScale, type AttackDef,
 } from './data';
 import { mulberry32, openGate, zoneOfTx, type Level } from './level';
 import { gameLevel } from './world';
@@ -44,6 +44,7 @@ export class Sim {
   /** 문마다 열렸는지 ([z - 1] = z구역 출구) */
   gates: boolean[];
   private gateNoticeAt = new Map<string, number>(); // 닫힌 문 안내를 너무 자주 띄우지 않도록
+  private leechAcc = new Map<string, number>(); // 흡혈로 모은 소수점 회복량 (플레이어별)
   private endTimer = 0;
   private pendingStatus: GameStatus | null = null;
 
@@ -299,49 +300,66 @@ export class Sim {
     p.atkAnim = 0.18;
 
     if (a.kind === 'melee') {
-      this.meleeArc(p, a.range, a.arc, a.mult, a.knock, 0);
+      const dealt = this.meleeArc(p, a.range, a.arc, a.mult, a.knock, 0);
+      // 검사 패시브 '흡혈 베기': 기본 공격으로 준 피해의 일부를 HP로
+      if (p.cls === 'swordsman' && dealt > 0) this.leech(p, dealt * lifestealRate(p.level));
     } else {
-      const d = this.rollDamage(p, a.mult);
-      // 자동 조준: 조준 방향 앞의 적을 골라 그쪽으로 쏘고, 날아가는 동안 따라간다
-      const target = a.assist ? this.assistTarget(p, a.range, a.assist.cone) : null;
-      const ang = target ? Math.atan2(target.y - p.y, target.x - p.x) : p.aim;
-      if (target) p.aim = ang; // 캐릭터도 쏜 쪽을 바라본다 (다음 입력이 오면 다시 바뀐다)
-      const pr = this.playerProjectile(p, {
-        kind: a.proj, ang, speed: a.speed, range: a.range, arcHeight: a.arcHeight,
-        r: a.proj === 'orb' ? 9 : 6, aoe: a.aoe, dmg: d.v, crit: d.crit, pierce: false,
-      });
-      if (target && a.assist) {
-        pr.homing = target.id;
-        pr.turn = a.assist.turn;
+      // 궁수 패시브 '연발 사격': 레벨에 따라 화살이 는다. 자동 조준은 화살마다 다른 적을 노린다 (가까운·정면에 가까운 적부터)
+      const count = p.cls === 'elf' ? arrowCount(p.level) : 1;
+      const targets = a.assist ? this.assistTargets(p, a.range, a.assist.cone, count) : [];
+      const center = targets[0] ? Math.atan2(targets[0].y - p.y, targets[0].x - p.x) : p.aim;
+      if (targets[0]) p.aim = center; // 캐릭터도 쏜 쪽을 바라본다 (다음 입력이 오면 다시 바뀐다)
+      let spare = 0; // 노릴 적이 없는 화살은 부채꼴로 벌려 쏜다
+      for (let i = 0; i < count; i++) {
+        const target = targets[i];
+        let ang = center;
+        if (target) ang = Math.atan2(target.y - p.y, target.x - p.x);
+        else if (i > 0) {
+          spare++;
+          ang = center + PASSIVE.multiShot.spread * Math.ceil(spare / 2) * (spare % 2 ? 1 : -1);
+        }
+        const d = this.rollDamage(p, a.mult);
+        const pr = this.playerProjectile(p, {
+          kind: a.proj, ang, speed: a.speed, range: a.range, arcHeight: a.arcHeight,
+          r: a.proj === 'orb' ? 9 : 6, aoe: a.aoe, dmg: d.v, crit: d.crit, pierce: false,
+        });
+        // 자동 조준: 날아가는 동안 노린 적을 따라간다
+        if (target && a.assist) {
+          pr.homing = target.id;
+          pr.turn = a.assist.turn;
+        }
+        this.projectiles.push(pr);
       }
-      this.projectiles.push(pr);
       this.events.push({ t: 'shoot', x: p.x, y: p.y, kind: a.proj, enemy: false });
     }
   }
 
   /**
-   * 자동 조준 대상: 조준 방향 좌우 cone 안, 사거리 안에서 벽에 가리지 않은 적.
-   * 가까울수록, 조준 방향 정면에 가까울수록 먼저 고른다. 없으면 null.
+   * 자동 조준 대상 최대 n마리: 조준 방향 좌우 cone 안, 사거리 안에서 벽에 가리지 않은 적.
+   * 가까울수록, 조준 방향 정면에 가까울수록 먼저 고른다.
    */
-  private assistTarget(p: Player, range: number, cone: number): Enemy | null {
-    let best: Enemy | null = null;
-    let bestScore = Infinity;
+  private assistTargets(p: Player, range: number, cone: number, n: number): Enemy[] {
+    const found: { e: Enemy; score: number }[] = [];
     for (const e of this.enemies) {
       if (!e.active || e.hp <= 0 || e.z > 30) continue;
       const d = dist(p.x, p.y, e.x, e.y);
       if (d - e.r > range) continue;
       const off = Math.abs(angleDiff(Math.atan2(e.y - p.y, e.x - p.x), p.aim));
       if (off > cone) continue;
-      const score = d * (1 + 2 * off);
-      if (score >= bestScore || !lineOfSight(this.level, p.x, p.y, e.x, e.y)) continue;
-      best = e;
-      bestScore = score;
+      found.push({ e, score: d * (1 + 2 * off) });
     }
-    return best;
+    found.sort((a, b) => a.score - b.score);
+    const out: Enemy[] = [];
+    for (const f of found) {
+      if (out.length >= n) break;
+      if (lineOfSight(this.level, p.x, p.y, f.e.x, f.e.y)) out.push(f.e);
+    }
+    return out;
   }
 
-  /** 플레이어 앞(또는 주변) 부채꼴 안의 적을 친다. arc가 π 이상이면 360도. */
-  private meleeArc(p: Player, range: number, arc: number, mult: number, knock: number, stun: number) {
+  /** 플레이어 앞(또는 주변) 부채꼴 안의 적을 친다. arc가 π 이상이면 360도. 준 피해의 합을 돌려준다. */
+  private meleeArc(p: Player, range: number, arc: number, mult: number, knock: number, stun: number): number {
+    let dealt = 0;
     this.events.push({ t: 'swing', x: p.x, y: p.y, aim: p.aim, range, arc, enemy: false });
     for (const e of this.enemies) {
       if (!e.active || e.hp <= 0 || e.z > 30) continue;
@@ -350,9 +368,10 @@ export class Sim {
       const inArc = arc >= Math.PI || Math.abs(angleDiff(ang, p.aim)) <= arc;
       if (d - e.r <= range && (inArc || d < p.r + e.r + 4)) {
         const dmg = this.rollDamage(p, mult);
-        this.hitEnemy(e, dmg.v, dmg.crit, Math.cos(ang) * knock, Math.sin(ang) * knock, p, stun);
+        dealt += this.hitEnemy(e, dmg.v, dmg.crit, Math.cos(ang) * knock, Math.sin(ang) * knock, p, stun);
       }
     }
+    return dealt;
   }
 
   private playerProjectile(p: Player, o: {
@@ -835,12 +854,15 @@ export class Sim {
     }
     let scaled = raw * (0.9 + this.rng() * 0.2);
     if (p.guard > 0) scaled *= 1 - p.guardReduce;
+    const iron = p.cls === 'dwarf'; // 수호자 패시브 '강철 피부': 받는 피해 감소, 덜 밀려난다
+    if (iron) scaled *= 1 - ironSkinRate(p.level);
     const dmg = Math.max(1, Math.round(scaled * 0.15), Math.round(scaled - p.stats.def * 0.5));
     p.hp -= dmg;
     p.invuln = 0.7;
     const ang = Math.atan2(p.y - fromY, p.x - fromX);
-    p.vx = Math.cos(ang) * 240;
-    p.vy = Math.sin(ang) * 240;
+    const push = 240 * (iron ? PASSIVE.ironSkin.knock : 1);
+    p.vx = Math.cos(ang) * push;
+    p.vy = Math.sin(ang) * push;
     this.events.push({ t: 'dmg', x: p.x, y: p.y, v: dmg, crit: false, toPlayer: true });
     if (p.hp <= 0) {
       p.hp = 0;
@@ -867,16 +889,27 @@ export class Sim {
     this.events.push({ t: 'revive', pid: p.id });
   }
 
-  private restoreMp(p: Player, amount: number) {
+  /** MP 회복. passive면 패시브 효과라 화면에 작게, 소리 없이 */
+  private restoreMp(p: Player, amount: number, passive = false) {
     const before = p.mp;
     p.mp = Math.min(p.stats.maxMp, p.mp + amount);
-    if (p.mp - before >= 1) this.events.push({ t: 'mana', x: p.x, y: p.y, v: Math.round(p.mp - before) });
+    if (p.mp - before >= 1) this.events.push({ t: 'mana', x: p.x, y: p.y, v: Math.round(p.mp - before), passive });
   }
 
-  private healPlayer(p: Player, amount: number) {
+  /** HP 회복. passive면 패시브 효과라 화면에 작게, 소리 없이 */
+  private healPlayer(p: Player, amount: number, passive = false) {
     const before = p.hp;
     p.hp = Math.min(p.stats.maxHp, p.hp + amount);
-    if (p.hp > before) this.events.push({ t: 'heal', x: p.x, y: p.y, v: p.hp - before });
+    if (p.hp > before) this.events.push({ t: 'heal', x: p.x, y: p.y, v: p.hp - before, passive });
+  }
+
+  /** 흡혈: 소수점 회복량을 모아 두었다가 1 이상이 되면 정수만큼 회복한다 (HP는 정수로 유지) */
+  private leech(p: Player, amount: number) {
+    if (p.dead || p.hp >= p.stats.maxHp) return;
+    const acc = (this.leechAcc.get(p.id) ?? 0) + amount;
+    const whole = Math.floor(acc);
+    this.leechAcc.set(p.id, acc - whole);
+    if (whole > 0) this.healPlayer(p, whole, true);
   }
 
   // ─── 구역 ─────────────────────────────────────────
@@ -968,8 +1001,9 @@ export class Sim {
     e.vy = dir.y * speed;
   }
 
-  private hitEnemy(e: Enemy, raw: number, crit: boolean, kx: number, ky: number, by: Player | null, stun = 0) {
-    if (e.hp <= 0) return;
+  /** 적에게 피해를 준다. 실제로 준 피해(방어를 뺀 값)를 돌려준다 */
+  private hitEnemy(e: Enemy, raw: number, crit: boolean, kx: number, ky: number, by: Player | null, stun = 0): number {
+    if (e.hp <= 0) return 0;
     const dmg = Math.max(1, Math.round(raw - e.def * 0.5));
     e.hp -= dmg;
     e.hurt = 0.12;
@@ -997,10 +1031,13 @@ export class Sim {
       }
     }
     if (e.hp <= 0) this.killEnemy(e, by);
+    return dmg;
   }
 
   private killEnemy(e: Enemy, by: Player | null) {
     if (by) by.kills++;
+    // 마법사 패시브 '마나 순환': 쓰러뜨린 마법사가 최대 MP의 일부를 회복한다
+    if (by && !by.dead && by.cls === 'gnome') this.restoreMp(by, by.stats.maxMp * manaFlowRate(by.level), true);
     this.events.push({ t: 'kill', x: Math.round(e.x), y: Math.round(e.y), kind: e.kind, elite: !!e.elite });
     for (const p of this.players) if (!p.dead) this.gainXp(p, e.xp);
 

@@ -116,5 +116,5 @@ for (let z = 1; z <= ZONES; z++) zsel.add(new Option(`${z}구역 ${ZONE_NAMES[z 
 zsel.onchange = render;
 $('party').onchange = render;
 $('q').oninput = render;
-$('note').innerHTML = `값은 <code>src/game/data/enemies.ts</code>(ENEMIES · ELITES · GATE_KEEPERS · ZONE_HP/ATK/DEF)와 지금 맵 파일에서 바로 계산합니다. 밸런스나 맵을 바꾸면 이 표도 바뀝니다.`;
+$('note').innerHTML = `값은 <code>src/game/data/enemies.ts</code>(ENEMIES · ELITES · GATE_KEEPERS · ZONE_SCALE)와 지금 맵 파일에서 바로 계산합니다. 밸런스나 맵을 바꾸면 이 표도 바뀝니다.`;
 render();

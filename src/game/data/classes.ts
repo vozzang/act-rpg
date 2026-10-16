@@ -53,6 +53,7 @@ export interface ClassDef {
   bonus: { hp: number; atk: number; def: number; crit: number; mp: number; mpLv: number; mpRegen: number }; // 능력치와 별개인 직업 기본값
   attack: AttackDef; // 기본 공격
   skills: SkillDef[]; // 4개, SKILL_UNLOCKS 레벨에 하나씩 배운다
+  passive: { name: string; desc: string }; // 패시브 스킬 (1레벨부터 항상 켜져 있다. 수치는 PASSIVE, 지금 효과 글은 passiveText)
   weaponNoun: string; // 무기 이름 (이름이 없는 옛 장비를 보여줄 때만 쓴다)
   desc: string; // 로비 카드 설명
 }
@@ -71,6 +72,7 @@ export const CLASSES: Record<ClassId, ClassDef> = {
       { name: '전투 함성', cd: 18, mp: 30, unlock: 7, desc: '주변 동료와 자신의 공격력을 8초간 25% 올린다.' },
       { name: '검기 폭풍', cd: 20, mp: 60, unlock: 10, desc: '거대한 검기를 날려 일직선의 모든 적을 베어 버린다.' },
     ],
+    passive: { name: '흡혈 베기', desc: '기본 공격으로 준 피해의 일부만큼 HP를 회복한다. 레벨이 오를수록 늘어난다.' },
     weaponNoun: '장검',
     desc: '빠른 연속 베기. 균형 잡힌 능력치.',
   },
@@ -89,6 +91,7 @@ export const CLASSES: Record<ClassId, ClassDef> = {
       { name: '방패 돌진', cd: 9, mp: 25, unlock: 7, desc: '방패를 앞세워 돌진하며 부딪힌 적을 날려 보내고 기절시킨다.' },
       { name: '산의 수호', cd: 30, mp: 70, unlock: 10, desc: '주변 동료가 6초간 받는 피해를 절반으로 줄이고 체력을 20% 회복시킨다.' },
     ],
+    passive: { name: '강철 피부', desc: '맞아도 덜 밀려나고, 레벨이 오를수록 받는 피해가 줄어든다.' },
     weaponNoun: '전투도끼',
     desc: '튼튼한 몸과 강한 넉백. 적이 우선적으로 노린다.',
   },
@@ -96,15 +99,16 @@ export const CLASSES: Record<ClassId, ClassDef> = {
     name: '궁수', race: '엘프', color: 0x4caf50, r: 11, height: 56, speed: 180, aggro: 1.2,
     mainAttr: 'dex',
     attrs: { str: 4, dex: 12, int: 4, vit: 5 },
-    attrGrowth: { str: 0.25, dex: 1.75, int: 0.25, vit: 0.25 },
+    attrGrowth: { str: 0.25, dex: 1.5, int: 0.25, vit: 0.25 }, // 연발 사격(화살 여러 발)이 있어 다른 직업보다 성장을 낮게
     bonus: { hp: 42, atk: 4.2, def: 1, crit: 0.106, mp: 55, mpLv: 5, mpRegen: 3 },
-    attack: { kind: 'projectile', cd: 0.42, mult: 0.9, speed: 520, proj: 'arrow', range: 480, aoe: 0, arcHeight: 60, assist: { cone: 0.7, turn: 6 } },
+    attack: { kind: 'projectile', cd: 0.42, mult: 0.75, speed: 520, proj: 'arrow', range: 480, aoe: 0, arcHeight: 60, assist: { cone: 0.7, turn: 6 } },
     skills: [
       { name: '부채 사격', cd: 6, mp: 12, unlock: 1, desc: '적을 관통하는 화살 5발을 부채꼴로 쏜다.' },
       { name: '저격', cd: 6, mp: 18, unlock: 4, desc: '멀리까지 꿰뚫는 강력한 화살 한 발. 공격력 3배.' },
       { name: '화살비', cd: 12, mp: 35, unlock: 7, desc: '조준한 곳에 화살을 비처럼 쏟아붓는다.' },
       { name: '폭풍의 화살', cd: 20, mp: 60, unlock: 10, desc: '사방으로 관통하는 화살 16발을 동시에 쏜다.' },
     ],
+    passive: { name: '연발 사격', desc: '기본 공격 한 번에 화살을 여러 발 쏜다. 레벨이 오르면 화살이 늘어난다. 더 쏜 화살은 다른 적을 노린다.' },
     weaponNoun: '장궁',
     desc: '포물선을 그리며 멀리 날아가는 화살. 치명타 확률이 높다.',
   },
@@ -121,6 +125,7 @@ export const CLASSES: Record<ClassId, ClassDef> = {
       { name: '화염구', cd: 6, mp: 30, unlock: 7, desc: '크게 폭발하는 불덩이를 던진다. 공격력 2.5배.' },
       { name: '메테오', cd: 25, mp: 80, unlock: 10, desc: '조준한 곳에 거대한 운석을 떨어뜨린다. 공격력 5배.' },
     ],
+    passive: { name: '마나 순환', desc: '적을 쓰러뜨릴 때마다 최대 MP의 일부를 회복한다. 레벨이 오를수록 늘어난다.' },
     weaponNoun: '지팡이',
     desc: '터지는 마법 구체로 여러 적에게 피해를 준다.',
   },
@@ -147,3 +152,69 @@ export const SKILL = {
 };
 
 export const CLASS_ORDER: ClassId[] = ['swordsman', 'dwarf', 'elf', 'gnome'];
+
+// ─── 패시브 스킬 ──────────────────────────────────────
+
+/** 패시브 스킬 수치 (설명 글은 CLASSES.*.passive) */
+export const PASSIVE = {
+  // 검사 흡혈 베기: 기본 공격 피해의 %. 1레벨 base%, everyLevels 레벨마다 +1%, 최대 max%
+  lifesteal: { base: 1, everyLevels: 5, max: 10 },
+  // 수호자 강철 피부: 받는 피해 everyLevels 레벨마다 −1% (1레벨 0%), 최대 max%. 맞았을 때 밀려나는 거리 × knock (항상)
+  ironSkin: { everyLevels: 5, max: 10, knock: 0.5 },
+  // 궁수 연발 사격: 이 레벨들에 이를 때마다 기본 공격 화살이 1발씩 는다. spread = 짝 없는 화살의 벌어짐(라디안)
+  multiShot: { levels: [1, 5, 10], spread: 0.14 },
+  // 마법사 마나 순환: 적을 쓰러뜨리면 최대 MP의 %. everyLevels 레벨마다 +1% (1레벨 0%), 최대 max%
+  manaFlow: { everyLevels: 5, max: 10 },
+};
+
+/** 검사 흡혈 베기: 기본 공격 피해 중 HP로 돌아오는 비율 (0.01 = 1%) */
+export function lifestealRate(level: number) {
+  const l = PASSIVE.lifesteal;
+  return Math.min(l.max, l.base + Math.floor(level / l.everyLevels)) / 100;
+}
+
+/** 수호자 강철 피부: 받는 피해가 줄어드는 비율 (0.01 = 1%) */
+export function ironSkinRate(level: number) {
+  const r = PASSIVE.ironSkin;
+  return Math.min(r.max, Math.floor(level / r.everyLevels)) / 100;
+}
+
+/** 궁수 연발 사격: 기본 공격 한 번에 쏘는 화살 수 */
+export function arrowCount(level: number) {
+  return PASSIVE.multiShot.levels.filter((lv) => level >= lv).length;
+}
+
+/** 마법사 마나 순환: 적을 쓰러뜨렸을 때 회복하는 최대 MP 비율 (0.01 = 1%) */
+export function manaFlowRate(level: number) {
+  const m = PASSIVE.manaFlow;
+  return Math.min(m.max, Math.floor(level / m.everyLevels)) / 100;
+}
+
+/** 이 레벨에서 패시브의 지금 효과 (화면 표시용 짧은 글) */
+export function passiveText(cls: ClassId, level: number): string {
+  switch (cls) {
+    case 'swordsman':
+      return `기본 공격 피해의 ${Math.round(lifestealRate(level) * 100)}% 흡혈`;
+    case 'dwarf':
+      return `받는 피해 −${Math.round(ironSkinRate(level) * 100)}%, 밀려남 −${Math.round((1 - PASSIVE.ironSkin.knock) * 100)}%`;
+    case 'elf':
+      return `기본 공격 화살 ${arrowCount(level)}발`;
+    case 'gnome':
+      return `처치 시 최대 MP의 ${Math.round(manaFlowRate(level) * 100)}% 회복`;
+  }
+}
+
+/** 패시브가 레벨에 따라 어떻게 늘어나는지 (로비 카드·README용 짧은 글) */
+export function passiveGrowthText(cls: ClassId): string {
+  const l = PASSIVE.lifesteal, m = PASSIVE.manaFlow;
+  switch (cls) {
+    case 'swordsman':
+      return `기본 공격 피해의 ${l.base}% 흡혈, ${l.everyLevels}레벨마다 +1% (최대 ${l.max}%)`;
+    case 'dwarf':
+      return `받는 피해 ${PASSIVE.ironSkin.everyLevels}레벨마다 −1% (최대 ${PASSIVE.ironSkin.max}%), 밀려남 −${Math.round((1 - PASSIVE.ironSkin.knock) * 100)}%`;
+    case 'elf':
+      return `기본 공격 화살 ${PASSIVE.multiShot.levels.map((lv, i) => `Lv${lv} ${i + 1}발`).join(' · ')}`;
+    case 'gnome':
+      return `처치 시 최대 MP의 ${m.everyLevels}레벨마다 +1% 회복 (최대 ${m.max}%)`;
+  }
+}

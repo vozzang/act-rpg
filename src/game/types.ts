@@ -226,7 +226,7 @@ export type GameEvent =
   | { t: 'shoot'; x: number; y: number; kind: Projectile['kind']; enemy: boolean } // 투사체를 쐈다 (기본 공격·적의 원거리 공격)
   | { t: 'gate'; x: number; y: number } // 문이 열렸다
   | { t: 'forged'; pid: string; item: Item; recipe: string | null } // 대장간에서 조합했다 (recipe: 조합법 이름, 랜덤이면 null)
-  | { t: 'heal'; x: number; y: number; v: number } // HP 회복 (v: 회복량)
+  | { t: 'heal'; x: number; y: number; v: number; passive?: boolean } // HP 회복 (v: 회복량, passive: 패시브 흡혈이라 소리 없이 작게)
   | { t: 'boom'; x: number; y: number; r: number; shake?: boolean; kind?: BoomKind } // 폭발·충격 (r: 반지름, shake: 화면 흔들기)
   | { t: 'levelup'; pid: string; level: number } // 레벨업
   | { t: 'equip'; pid: string; item: Item } // 장비를 얻었다 (주움·구매·조합)
@@ -236,7 +236,7 @@ export type GameEvent =
   | { t: 'skill'; pid: string; cls: ClassId; idx: number; x: number; y: number; r: number; aim: number } // 스킬 사용 (idx: 스킬 순서, r: 범위)
   | { t: 'unlock'; pid: string; idx: number } // 새 스킬을 배웠다
   | { t: 'nomp'; pid: string } // MP가 모자라 스킬을 못 썼다
-  | { t: 'mana'; x: number; y: number; v: number } // MP 회복 (v: 회복량)
+  | { t: 'mana'; x: number; y: number; v: number; passive?: boolean } // MP 회복 (v: 회복량, passive: 패시브 마나 순환이라 소리 없이 작게)
   | { t: 'gold'; pid: string; x: number; y: number; v: number } // 돈을 받았다 (v: 액수)
   | { t: 'bought'; pid: string; entry: ShopEntry } // 상점에서 샀다
   | { t: 'notice'; pid: string; text: string } // 그 플레이어에게만 보이는 짧은 안내 (품절, 상자 가득 등)

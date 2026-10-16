@@ -1,7 +1,7 @@
 // 화면에 고정된 정보: 파티 패널, 내 정보창, 능력치 버튼, 스킬 바, 아이템 상자, 보스 체력, 화면 밖 동료 표시
 import Phaser from 'phaser';
 import {
-  ATTR_KEYS, ATTR_NAMES, CLASSES, ENEMIES, FOOD, INV_SIZE, RARITY, VIEW_H, VIEW_W, itemName, itemStatText,
+  ATTR_KEYS, ATTR_NAMES, CLASSES, ENEMIES, FOOD, INV_SIZE, RARITY, VIEW_H, VIEW_W, itemName, itemStatText, passiveText,
 } from '../game/data';
 import type { AttrKey, InvSlot, Player, Snapshot } from '../game/types';
 import { makeText } from './ui';
@@ -174,15 +174,15 @@ export class Hud {
     for (let i = s.players.length; i < 4; i++) this.panelTexts[i].setVisible(false);
   }
 
-  /** 왼쪽 아래 내 정보: 능력치, 전투 수치, MP, 돈 + 남은 능력치 포인트 */
+  /** 왼쪽 아래 내 정보: 능력치, 전투 수치, MP·돈, 패시브 + 남은 능력치 포인트 */
   private drawInfo(me: Player) {
     const main = CLASSES[me.cls].mainAttr;
     const pct = (v: number) => Math.round(v * 100);
     this.infoText.setText([
       ATTR_KEYS.map((k) => `${k === main ? '★' : ''}${ATTR_NAMES[k]} ${me.attrs[k]}`).join('   '),
       `공격 ${me.stats.atk}  방어 ${me.stats.def}  치명 ${pct(me.stats.crit)}%  회피 ${pct(me.stats.dodge)}%  공속 +${pct(me.stats.haste)}%  스킬가속 +${pct(me.stats.cdr)}%`,
-      `MP ${Math.floor(me.mp)}/${me.stats.maxMp}  (초당 +${me.stats.mpRegen.toFixed(1)})`,
-      `${me.gold} G`,
+      `MP ${Math.floor(me.mp)}/${me.stats.maxMp}  (초당 +${me.stats.mpRegen.toFixed(1)})      ${me.gold} G`,
+      `패시브 ${CLASSES[me.cls].passive.name}: ${passiveText(me.cls, me.level)}`,
     ]);
     this.g.fillStyle(0x000000, 0.45).fillRoundedRect(4, VIEW_H - INFO_H - 4, 400, INFO_H, 6);
 
