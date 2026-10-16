@@ -320,10 +320,13 @@ const params = new URLSearchParams(location.search);
 const roomParam = params.get('room');
 if (roomParam) $<HTMLInputElement>('code').value = roomParam.toUpperCase();
 
-// 개발 중에만: 로비의 '시작 레벨'·'시작 구역' (이 브라우저에 기억). ?level=10 · ?zone=5 로도 정할 수 있다
+// 개발 중에만: 로비의 '시작 레벨'·'시작 구역' (이 브라우저에 기억). ?level=10 · ?zone=5 로도 정할 수 있다.
+// 줄 자체를 여기서 만든다 — HTML에 숨겨 두면 배포판에도 들어가고, 스타일(label.check의 display)에 따라 보일 수 있다
 if (import.meta.env.DEV) {
+  $('dev-rows').innerHTML = `
+    <label class="check">🛠 시작 레벨 <input type="number" id="dev-level" min="1" max="60" value="1" style="width:70px" /> <span class="hint" style="margin:0">(개발용: 모든 플레이어가 이 레벨로 시작. 게임 중 ] 올리기 · [ 내리기, Shift와 함께 5씩)</span></label>
+    <label class="check" style="margin-top:12px">🛠 시작 구역 <select id="dev-zone" style="width:auto"></select> <span class="hint" style="margin:0">(개발용: 그 구역 입구에서 시작. 앞 구역 문은 열리고 몬스터는 없다)</span></label>`;
   const zs = $<HTMLSelectElement>('dev-zone');
-  $('dev-zone-row').hidden = false;
   ZONE_NAMES.forEach((n, i) => zs.add(new Option(`${i + 1}구역 ${n}`, String(i + 1))));
   try {
     zs.value = params.get('zone') ?? localStorage.getItem('actrpg-dev-zone') ?? '1';
@@ -338,7 +341,6 @@ if (import.meta.env.DEV) {
     }
   };
   const lv = $<HTMLInputElement>('dev-level');
-  $('dev-level-row').hidden = false;
   try {
     lv.value = params.get('level') ?? localStorage.getItem('actrpg-dev-level') ?? '1';
   } catch {
