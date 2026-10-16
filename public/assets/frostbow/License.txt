@@ -1,0 +1,8 @@
+Bow pack (Low poly game asset) — bow_05 (blue crystal bow)
+Author: CreativeSky2000 (@CreativeSky2000)
+License: Creative Commons Attribution 4.0 International (CC BY 4.0)
+https://creativecommons.org/licenses/by/4.0/
+
+Used in ACT RPG as the hand model of the legendary bow "서리바람 활" (archer only).
+Changes: converted from OBJ to GLB, rescaled (height 0.55) and re-centered on the grip,
+blue crystal material made emissive, grey limbs lightened to silver, gold made metallic.

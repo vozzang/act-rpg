@@ -75,7 +75,7 @@ export interface Level {
   props: PropPlacement[]; // 맵 편집기로 놓은 장식 (타일 좌표)
   start: { x: number; y: number }; // 출발점 (월드 좌표)
   mapH: number; // 맵 파일의 세로 칸 수 (h는 여기에 아래쪽 던전 줄을 더한 값)
-  dungeon?: DungeonArena; // 던전 (맵 파일에 던전 문이 있을 때만)
+  dungeons: DungeonArena[]; // 던전들 (맵 파일의 던전 문마다 하나, 구역마다 많아야 하나)
 }
 
 /**
@@ -83,10 +83,16 @@ export interface Level {
  * 좌표는 모두 월드 좌표(px). 투기장 x는 문이 있는 구역 안이라 구역 판정(배율·배경)은 그 구역을 따른다.
  */
 export interface DungeonArena {
+  zone: number; // 문이 있는 구역 (설정은 DUNGEONS[zone])
   portal: { x: number; y: number }; // 들어가는 문 (맵 위)
   center: { x: number; y: number }; // 투기장 가운데 (보상 상자 자리)
   radius: number; // 투기장 반지름 (걸을 수 있는 둥근 바닥)
-  entry: { x: number; y: number }; // 들어오면 서는 곳 (남쪽 끝). 클리어하면 여기에 나가는 문이 열린다
+  entry: { x: number; y: number }; // 들어오면 서는 곳 (남쪽 끝)
+}
+
+/** 나가는 문 자리: 투기장 북쪽 끝 (들어온 남쪽 끝 반대편). 클리어하면 열린다 */
+export function dungeonExit(d: DungeonArena) {
+  return { x: d.center.x, y: d.center.y - d.radius + 64 };
 }
 
 /** 시드로 같은 난수열을 만드는 간단한 난수 생성기 (0~1) */
@@ -314,7 +320,7 @@ export function buildLevel(seed: number): Level {
   spawns.push({ kind: 'boss', x: arenaCenter.x + TILE * 4, y: arenaCenter.y, zone: zones });
 
   return {
-    w, h, mapH: h, tiles, ground, spawns, zoneStartsTx, arenaTx, arenaCenter, shops, gates, props: [],
+    w, h, mapH: h, dungeons: [], tiles, ground, spawns, zoneStartsTx, arenaTx, arenaCenter, shops, gates, props: [],
     start: { x: world(startTile.x), y: world(startTile.y) },
   };
 }

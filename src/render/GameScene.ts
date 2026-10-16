@@ -237,7 +237,7 @@ export class GameScene extends Phaser.Scene {
     this.updateMenus(snap);
     this.world.update(snap, this.session.myId, dt);
     this.drawOverlays(snap);
-    this.hud.update(snap, this.me, !!this.me && this.me.y > this.level.mapH * TILE);
+    this.hud.update(snap, this.me, this.dungeonIdx(this.me));
     this.map.update(this.hud.g, snap, this.keys.TAB.isDown,
       Phaser.Input.Keyboard.JustDown(this.keys.M) || this.pad.pressed(BTN.VIEW) || !!this.touch?.consume('map'));
     for (const e of events) this.effects.play(e, snap, this.me);
@@ -253,6 +253,17 @@ export class GameScene extends Phaser.Scene {
       this.effects.showEnd(snap, canReturn ? this.session.backToLobby : null, snap.status === 'ended' ? (canReturn ? '게임을 끝냈습니다' : '방장이 게임을 끝냈습니다') : '');
       if (canReturn && (Phaser.Input.Keyboard.JustDown(this.keys.ENTER) || this.pad.pressed(BTN.A))) this.session.backToLobby();
     }
+  }
+
+  /** 내가 들어가 있는 던전 투기장 번호 (맵 아래 줄에서 가장 가까운 투기장, 밖이면 -1) */
+  private dungeonIdx(p?: Player) {
+    if (!p || p.y <= this.level.mapH * TILE) return -1;
+    let best = -1, bestD = Infinity;
+    this.level.dungeons.forEach((d, i) => {
+      const dd = Math.abs(p.x - d.center.x);
+      if (dd < bestD) [best, bestD] = [i, dd];
+    });
+    return best;
   }
 
   /** 끝내기 버튼: 한 번 더 묻고, 방장·혼자는 게임을 끝내고(모두 결과 화면), 참가자는 연결을 끊고 혼자 결과 화면 */
@@ -681,7 +692,12 @@ export class GameScene extends Phaser.Scene {
           label = makeText(this, 0, 0, e.elite, 13).setOrigin(0.5, 1).setDepth(20).setColor('#ffd060').setStroke('#000', 4);
           this.eliteLabels.set(e.id, label);
         }
-        label.setPosition(sx, top - 10).setVisible(true);
+        label.setText(e.shielded ? `${e.elite} · 보호막` : e.elite).setColor(e.shielded ? '#c8a0ff' : '#ffd060').setPosition(sx, top - 10).setVisible(true);
+      } else if (e.tomb) {
+        // 묘비: 보랏빛 체력바를 늘 보여준다 (부숴야 할 목표)
+        g.fillStyle(0x000000, 0.7).fillRect(sx - 26, top - 6, 52, 6);
+        g.fillStyle(0xa060ff, 1).fillRect(sx - 26, top - 6, (52 * e.hp) / e.maxHp, 6);
+        g.lineStyle(1, 0xd0b0ff, 0.9).strokeRect(sx - 26, top - 6, 52, 6);
       } else if (e.kind !== 'boss' && e.hp < e.maxHp) {
         g.fillStyle(0x000000, 0.6).fillRect(sx - 18, top - 6, 36, 4);
         g.fillStyle(0xe04040, 1).fillRect(sx - 18, top - 6, (36 * e.hp) / e.maxHp, 4);

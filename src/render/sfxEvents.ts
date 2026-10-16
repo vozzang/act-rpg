@@ -91,6 +91,12 @@ export function playEventSound(sfx: Sound, e: GameEvent, myId: string) {
     case 'dodge':
       sfx.play('swing2', { at, volume: 0.35, rate: 1.8 });
       break;
+    case 'undying': // 불사: 되살아나는 소리
+      sfx.play('revive', { at, volume: 0.7 });
+      break;
+    case 'block': // 절대방어: 쇠붙이 부딪히는 높은 소리
+      sfx.play('unsheathe1', { at, volume: 0.5, rate: 1.6 });
+      break;
     case 'warp': // 던전 문 순간이동
       sfx.play('spell', { at, volume: 0.45, rate: 1.4 });
       break;

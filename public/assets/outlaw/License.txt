@@ -1,0 +1,7 @@
+Skeleton Outlaw 3D Character — Kevin Iglesias (https://www.keviniglesias.com/)
+License: Creative Commons Zero (CC0 1.0) — https://creativecommons.org/publicdomain/zero/1.0/
+
+Used in ACT RPG as the 9th-zone dungeon boss "해골 무법자".
+Changes: the original FBX 6.1 (ASCII) model and 9 animations (Idle00, Walk00, Run00, Attack00~02,
+Damage00, Dead00, Jump00 [NoRootMotion]) were converted to one GLB with a custom converter
+(the baked 5-second loops were cut to a single cycle); textures resized to JPEG (skeleton 1024px, axe 512px).

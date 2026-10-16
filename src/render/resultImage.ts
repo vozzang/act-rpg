@@ -10,6 +10,11 @@ export const SITE_URL = 'https://vozzang.github.io/act-rpg/';
 const W = 1080;
 const PAD = 56;
 
+/** 던전 결과 한 줄 (들어간 던전만): 예) '5구역 던전 클리어 · 7구역 던전 실패' */
+export function dungeonSummary(s: Snapshot) {
+  return s.dungeons.filter((d) => d.state !== 'open').map((d) => `${d.zone}구역 던전 ${d.cleared ? '클리어' : '실패'}`).join(' · ');
+}
+
 /** 걸린 시간 (h:mm:ss 또는 m:ss) */
 export function playTime(tick: number) {
   const sec = Math.floor(tick / 60);
@@ -55,7 +60,7 @@ export async function downloadResultImage(s: Snapshot, myId: string) {
   text(date, W - PAD, 78, 24, '#8d9ab3', 'right');
   text(win ? '흑룡 처치!' : s.status === 'ended' ? '게임 종료' : '전멸...', W / 2, 168, 76, win ? '#ffd040' : s.status === 'ended' ? '#c8d0e0' : '#ff6060', 'center', true);
   const kills = s.players.reduce((n, p) => n + p.kills, 0);
-  const dg = s.dungeon ? (s.dungeon.cleared ? '던전 클리어' : s.dungeon.state === 'open' ? '' : '던전 실패') : '';
+  const dg = dungeonSummary(s);
   const summary = [`${win ? '클리어' : '플레이'} 시간 ${playTime(s.tick)}`, `처치 ${kills.toLocaleString()}`, win ? '10구역 완주' : `${s.zone}구역까지`, dg].filter(Boolean).join('   ·   ');
   text(summary, W / 2, 236, 28, '#d8e4ff', 'center');
 

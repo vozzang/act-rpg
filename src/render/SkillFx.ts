@@ -245,6 +245,7 @@ export class SkillFx {
   private chills = new Map<string, THREE.Mesh>(); // 얼음 마녀의 냉기에 맞아 느려진 플레이어 발밑 얼음
   private auras = new Map<string, THREE.Mesh>();
   private frostRings = new Map<number, THREE.Mesh>();
+  private domes = new Map<number, THREE.Mesh>(); // 묘비 보호막을 두른 보스의 보랏빛 반구
   private stars = new Map<number, THREE.Group>();
   private clock = 0;
 
@@ -574,6 +575,21 @@ export class SkillFx {
     this.glow.emit(x, y, z, vx, vy, vz, life, color, size);
   }
 
+  /** 불사로 버틴 자리: 보랏빛 불꽃이 솟고 고리가 퍼진다 */
+  undying(wx: number, wy: number) {
+    const x = wx * U, z = wy * U;
+    for (let i = 0; i < 26; i++) this.glow.emit(x + rand(-0.3, 0.3), rand(0, 0.4), z + rand(-0.3, 0.3), rand(-0.3, 0.3), rand(1.5, 3.2), rand(-0.3, 0.3), rand(0.5, 0.9), i % 2 ? 0xb070ff : 0xe0c0ff, rand(0.12, 0.2));
+    this.ring(x, z, 0.3, 1.8, 0xc090ff, 0.45);
+  }
+
+  /** 절대방어로 막은 자리: 금빛 고리 두 개와 방패 조각 같은 빛 알갱이 */
+  aegis(wx: number, wy: number) {
+    const x = wx * U, z = wy * U;
+    this.ring(x, z, 0.3, 1.3, 0xffd860, 0.3, 0.5);
+    this.ring(x, z, 0.2, 0.9, 0xfff0b0, 0.25, 0.9);
+    this.burst(x, 0.7, z, 14, 2.2, 0xffe080, 0.14, 0.35);
+  }
+
   /** 순간이동한 자리: 빛 기둥과 고리 */
   warp(wx: number, wy: number) {
     const x = wx * U, z = wy * U;
@@ -792,7 +808,7 @@ export class SkillFx {
     for (const e of enemies) {
       seen.add(e.id);
       const x = e.x * U, z = e.y * U;
-      const size = (e.elite ? ELITE.scale : 1) * (e.kind === 'boss' ? 2.5 : 1);
+      const size = (e.elite ? ELITE.scale : 1) * (e.kind === 'boss' ? 5 : 1);
       // 둔화(냉기 파동): 발밑 얼음과 하얀 냉기
       let fr = this.frostRings.get(e.id);
       if (e.slow > 0 && e.hp > 0) {
@@ -818,6 +834,23 @@ export class SkillFx {
       if (e.bleed > 0 && e.hp > 0 && Math.random() < dt * 12) {
         this.glow.emit(x + rand(-0.2, 0.2) * size, rand(h * 0.3, h * 0.8), z + rand(-0.2, 0.2) * size, rand(-0.3, 0.3), rand(-1.5, -0.6), rand(-0.3, 0.3), rand(0.4, 0.6), 0xc01020, rand(0.06, 0.1));
       }
+      // 묘비 보호막: 보스를 감싸는 보랏빛 반구 (반짝이며 천천히 돈다)
+      let dome = this.domes.get(e.id);
+      if (e.shielded && e.hp > 0) {
+        if (!dome) {
+          dome = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xb070ff, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false }));
+          this.scene.add(dome);
+          this.domes.set(e.id, dome);
+        }
+        const h = ENEMIES[e.kind].height * U * size;
+        dome.position.set(x, 0, z);
+        dome.scale.set(0.75 * size, h * 1.15, 0.75 * size);
+        dome.rotation.y += dt * 0.6;
+        (dome.material as THREE.MeshBasicMaterial).opacity = 0.18 + Math.sin(this.clock * 4) * 0.06;
+        dome.visible = true;
+      } else if (dome) dome.visible = false;
+      // 묘비: 보랏빛 넋이 피어오른다
+      if (e.tomb && e.hp > 0 && Math.random() < dt * 6) this.glow.emit(x + rand(-0.3, 0.3), rand(0.2, 1), z + rand(-0.3, 0.3), 0, rand(0.4, 0.9), 0, rand(0.8, 1.2), 0xb080ff, rand(0.1, 0.16));
       // 기절(대지 강타·방패 돌진): 머리 위를 도는 노란 별
       let st = this.stars.get(e.id);
       if (e.stun > 0.15 && e.hp > 0 && e.kind !== 'boss') {
@@ -843,6 +876,11 @@ export class SkillFx {
       this.scene.remove(m);
       (m.material as THREE.Material).dispose();
       this.frostRings.delete(id);
+    }
+    for (const [id, m] of this.domes) if (!seen.has(id)) {
+      this.scene.remove(m);
+      (m.material as THREE.Material).dispose();
+      this.domes.delete(id);
     }
     for (const [id, g] of this.stars) if (!seen.has(id)) {
       this.scene.remove(g);

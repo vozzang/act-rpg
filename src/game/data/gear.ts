@@ -65,6 +65,8 @@ export const WEAPON_EFFECTS = {
   burn: { name: '화염', chance: 0.25, time: 3, ratio: 0.3 },
   bleed: { name: '출혈', chance: 0.3, time: 3, ratio: 0.2, maxStacks: 3 },
   quake: { name: '대지 가르기', chance: 0.2, radius: 90, ratio: 0.6, stun: 0.6 },
+  aegis: { name: '절대방어', chance: 0.3 }, // 방어구: 맞을 때 이 확률로 피해를 통째로 막는다 (회피와 따로 굴린다)
+  undying: { name: '불사', chance: 1, hp: 0.3, cooldown: 60, invuln: 1.5 }, // 장신구: 쓰러질 피해를 받으면 HP hp(비율)로 버틴다. cooldown초에 한 번, 버틴 뒤 invuln초 무적
 };
 
 /** 유니크 무기 드랍: fromZone 구역부터 중간보스·문지기를 쓰러뜨리면 chance 확률로 아직 안 나온 유니크 무기 하나 (원래 드랍과 따로) */
@@ -89,6 +91,12 @@ export function effectText(effect: WeaponEffect): string {
     case 'quake': {
       const e = WEAPON_EFFECTS.quake;
       return `대지 가르기: 맞히면 ${p(e.chance)} 확률로 주변 적에게 공격력의 ${p(e.ratio)} 피해와 ${e.stun}초 기절`;
+    }
+    case 'aegis':
+      return `절대방어: 맞을 때 ${p(WEAPON_EFFECTS.aegis.chance)} 확률로 피해를 막는다`;
+    case 'undying': {
+      const e = WEAPON_EFFECTS.undying;
+      return `불사: 쓰러질 피해를 받으면 HP ${p(e.hp)}로 버틴다 (${e.cooldown}초에 한 번)`;
     }
   }
 }

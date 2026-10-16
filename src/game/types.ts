@@ -75,8 +75,11 @@ export interface Item {
   cls?: ClassId; // 이 직업만 착용(아이템 상자에 넣기)할 수 있다. 다른 직업은 가방에 보관만 (유니크 전설 무기)
 }
 
-/** 유니크 전설 무기의 특수 효과: 서리(둔화) · 화염(불타는 지속 피해) · 출혈(겹치는 지속 피해) · 대지 가르기(주변 충격파와 기절) */
-export type WeaponEffect = 'frost' | 'burn' | 'bleed' | 'quake';
+/**
+ * 장비 특수 효과. 무기(맞힐 때): 서리(둔화) · 화염(불타는 지속 피해) · 출혈(겹치는 지속 피해) · 대지 가르기(주변 충격파와 기절).
+ * 방어구(맞을 때): 절대방어(일정 확률로 피해를 막는다) · 장신구: 불사(쓰러질 피해를 한 번 버틴다, 재사용 대기)
+ */
+export type WeaponEffect = 'frost' | 'burn' | 'bleed' | 'quake' | 'aegis' | 'undying';
 
 /** 회복 음식 종류: HP 음식 · MP 음식 */
 export type FoodKind = 'hpFood' | 'mpFood';
@@ -110,6 +113,8 @@ export interface Player extends Body {
   points: number; // 남은 배분 포인트
   gold: number; // 가진 돈 (파티 전원이 같은 만큼 받는다)
   inv: (InvSlot | null)[]; // 아이템 상자 (INV_SIZE칸). 상자에 든 장비는 모두 능력치에 더해진다 (= 착용 중)
+  undyingCd: number; // 장신구 '불사'를 다시 쓸 수 있을 때까지 남은 시간
+  weaponFx?: WeaponEffect; // 착용한 유니크 무기의 효과 (손에 든 무기 모양용. 남의 상자는 스냅샷에 안 보내므로 따로)
   bag: (Item | null)[]; // 가방 (BAG_SIZE칸). 장비를 넣어 두기만 하는 곳이라 능력치에 더해지지 않는다
   stats: Stats; // 능력치·장비로 계산한 전투 수치
   atkCd: number; // 다음 기본 공격까지 남은 시간
@@ -164,7 +169,9 @@ export interface Enemy extends Body {
   bleedDps: number; // 출혈 한 겹의 초당 피해
   dotBy: string; // 지속 피해를 건 플레이어 id (쓰러뜨린 사람으로 친다)
   dotTick: number; // 지속 피해를 다음에 줄 때까지 남은 시간
-  dungeon?: boolean; // 던전 웨이브로 나온 적
+  dungeon?: number; // 던전 웨이브로 나온 적이면 그 던전 번호 (Level.dungeons)
+  tomb?: boolean; // 던전의 묘비 (움직이지 않고 공격하지 않는 부술 수 있는 물건)
+  shielded?: boolean; // 묘비가 서 있어 피해를 거의 받지 않는 보스
   rush: number; // 멀리서 공격받아 쏜 쪽으로 돌격하는 남은 시간 (빨라진다)
   taunt: number; // 도발 남은 시간
   tauntBy: string; // 도발한(또는 멀리서 쏜) 플레이어 id
@@ -248,6 +255,8 @@ export type GameEvent =
   | { t: 'dmg'; x: number; y: number; v: number; crit: boolean; toPlayer: boolean; dot?: 'burn' | 'bleed' } // 피해 (v: 피해량, toPlayer: 플레이어가 맞았는지, dot: 화염·출혈 지속 피해)
   | { t: 'proc'; effect: WeaponEffect; x: number; y: number } // 유니크 무기 효과가 걸렸다 (맞은 자리에 얼음·불꽃·피가 튄다)
   | { t: 'warp'; x: number; y: number } // 던전 문으로 순간이동한 자리 (빛 기둥)
+  | { t: 'block'; x: number; y: number } // 절대방어로 피해를 막았다 (금빛 방패)
+  | { t: 'undying'; x: number; y: number } // 불사로 쓰러질 피해를 버텼다 (보랏빛 불꽃)
   | { t: 'dodge'; x: number; y: number } // 플레이어가 적의 공격을 피했다
   // 소리용 이벤트 (화면 효과는 없다)
   | { t: 'kill'; x: number; y: number; kind: EnemyKind; elite: boolean } // 적이 쓰러졌다
@@ -277,7 +286,7 @@ export type GameStatus = 'playing' | 'victory' | 'defeat' | 'ended';
 
 /** 화면에 필요한 적 정보만 (네트워크로 보내는 양을 줄이려고 공격력·경험치·AI 내부 값 등은 뺀다) */
 export type EnemyView = Pick<Enemy,
-  'id' | 'kind' | 'elite' | 'x' | 'y' | 'r' | 'aim' | 'hp' | 'maxHp' | 'hurt' | 'stun' | 'slow' | 'burn' | 'bleed' | 'taunt' | 'state' | 'timer' | 'z' | 'tx' | 'ty'>;
+  'id' | 'kind' | 'elite' | 'x' | 'y' | 'r' | 'aim' | 'hp' | 'maxHp' | 'hurt' | 'stun' | 'slow' | 'burn' | 'bleed' | 'tomb' | 'shielded' | 'taunt' | 'state' | 'timer' | 'z' | 'tx' | 'ty'>;
 
 /** 화면에 필요한 떨어진 물건 정보만 (돈 액수·튀는 속도는 빼고, 장비는 이름·수치를 보여줘야 하므로 남긴다) */
 export type DropView = Pick<Drop, 'id' | 'kind' | 'x' | 'y' | 'z' | 'item'>;
@@ -298,7 +307,7 @@ export interface Snapshot {
   events: GameEvent[]; // 지난 스냅샷 뒤에 일어난 일
   boss: { hp: number; maxHp: number } | null; // 흑룡이 깨어나 있으면 체력 (보스 체력바용)
   gates: boolean[]; // 문마다 열렸는지 ([z - 1] = z구역 출구)
-  dungeon: DungeonView | null; // 던전 진행 (맵에 던전이 없으면 null)
+  dungeons: DungeonView[]; // 던전마다 진행 (Level.dungeons 순서)
 }
 
 /**
@@ -309,11 +318,14 @@ export type DungeonState = 'open' | 'active' | 'cleared' | 'closed';
 
 /** 스냅샷의 던전 정보 */
 export interface DungeonView {
+  zone: number; // 문이 있는 구역
+  name: string; // 던전 이름
   state: DungeonState;
   wave: number; // 지금 웨이브 (1부터, 시작 전 0)
   waves: number; // 웨이브 수
   left: number; // 남은 적 수
   cleared: boolean; // 클리어했는지 (끝난 뒤 결과 화면용)
+  boss: { name: string; hp: number } | null; // 살아 있는 중간보스·보스 하나 (hp: 남은 비율 0~1)
 }
 
 /** 로비(대기실)의 참가자 */

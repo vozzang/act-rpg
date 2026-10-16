@@ -34,7 +34,7 @@ export const ENEMIES: Record<EnemyKind, EnemyDef> = {
   orc: { name: '오크 전사', ai: 'heavy', heavy: true, knock: 0.35, r: 15, height: 56, hp: 200, atk: 20, def: 6, speed: 65, xp: 36, gold: 18, dropRate: 0.5 },
   // 흑룡: 4인이 9·10구역 상점 장비를 대장간에서 조합한 전설 장비 6개씩을 갖춰야 겨우 이기도록 맞췄다.
   // 방어가 매우 높아(한 대에 1500을 깎는다) 공격력이 낮은 장비로는 거의 피해를 주지 못한다 (봇 시험: 전설 6개 5/8 승, 전설 5+영웅 1 0/8, 그 아래 0)
-  boss: { name: '흑룡', ai: 'boss', r: 40, height: 110, hp: 60000, atk: 900, def: 3000, speed: 75, xp: 0, gold: 0, dropRate: 1 },
+  boss: { name: '흑룡', ai: 'boss', r: 40, height: 220, hp: 60000, atk: 900, def: 3000, speed: 75, xp: 0, gold: 0, dropRate: 1 },
   // 1구역: 작고 빠른 졸개 무리, 돌을 던지는 투척병
   hound: { name: '퍼그 졸개', ai: 'melee', r: 10, height: 30, hp: 34, atk: 8, def: 0, speed: 120, xp: 6, gold: 2, dropRate: 0.06 },
   thrower: { name: '고블린 투척병', ai: 'ranged', r: 11, height: 34, hp: 45, atk: 10, def: 1, speed: 70, xp: 13, gold: 5, dropRate: 0.12 },

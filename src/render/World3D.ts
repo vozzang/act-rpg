@@ -9,10 +9,10 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { isTouchDevice } from './TouchControls';
 import { SkillFx } from './SkillFx';
-import { CLASSES, ELITE, GATE_KEEPERS, RARITY, ZONE_PALETTE, TILE, VIEW_H, VIEW_W } from '../game/data';
-import { G_ROAD, G_STONE, T_FLOOR, T_GATE, T_PROP, T_SHOP, T_TREE, T_VOID, openGate, zoneOfTx, type Level } from '../game/level';
+import { DUNGEONS, CLASSES, ELITE, GATE_KEEPERS, RARITY, ZONE_PALETTE, TILE, VIEW_H, VIEW_W } from '../game/data';
+import { G_ROAD, G_STONE, T_FLOOR, T_GATE, T_PROP, T_SHOP, T_TREE, T_VOID, dungeonExit, openGate, zoneOfTx, type Level } from '../game/level';
 import { PROPS } from '../game/props';
-import type { ClassId, DropView, Rarity, EnemyKind, EnemyView, Player, ProjectileView, Snapshot } from '../game/types';
+import type { ClassId, DropView, Rarity, EnemyKind, EnemyView, Player, ProjectileView, Snapshot, WeaponEffect } from '../game/types';
 
 const BASE = 'assets/';
 const MODELS = {
@@ -41,6 +41,8 @@ const MODELS = {
   iceCrystal: 'td/snow-detail-crystal', iceCrystalL: 'td/snow-detail-crystal-large', snowStones: 'td/snow-detail-rocks',
   // 궁수 화살 (Arrow.fbx를 길이 1, 가운데 기준 GLB로 바꾼 것. 촉이 -z)
   arrowModel: 'arrow/arrow',
+  // 서리바람 활 (Bow pack의 bow_05, CC BY 4.0 CreativeSky2000. 손잡이가 원점, 활대가 위아래(+Y), 시위가 -Z, 높이 0.55, 파란 수정은 스스로 빛남)
+  frostBow: 'frostbow/frostbow',
   // 검사의 장검 (longsword1.blend를 GLB로 바꾼 것. 손잡이 가운데가 원점, 칼끝이 +y, 길이 0.6)
   longsword: 'longsword/longsword',
   // 수호자의 도끼 (axe_model.obj를 GLB로 바꾼 것. 쥐는 곳이 원점, 머리가 +y, 길이 0.55)
@@ -64,7 +66,7 @@ const MODELS = {
   ham: 'food/whole-ham', apple: 'food/apple', grapes: 'food/grapes', wine: 'food/wine-red',
 } as const;
 /** 'dragon'(최종 보스)은 Collada 파일이라 따로 불러온다 (loadDragon). 'goblinKeeper'(첫 문지기)도 크기를 맞춰야 해서 따로 (loadGoblin) */
-type ModelKey = keyof typeof MODELS | 'dragon' | 'goblinKeeper' | UacpKey | 'slime' | 'slimePurple';
+type ModelKey = keyof typeof MODELS | 'dragon' | 'goblinKeeper' | UacpKey | 'slime' | 'slimePurple' | 'outlaw';
 
 /**
  * Quaternius "Ultimate Animated Character Pack" (CC0) 캐릭터: 구역별 몬스터. 키가 약 3.1이라 불러올 때 Kenney 캐릭터 키로 줄인다.
@@ -94,7 +96,7 @@ const SQUASH_TIME = 0.35; // 죽는 동작이 없는 적(슬라임)이 찌그러
 const PITCH = THREE.MathUtils.degToRad(56); // 카메라가 내려다보는 각도
 const CAM_DIST = 11.5; // 카메라와 캐릭터 사이 거리
 const CHAR_SCALE = 1.25;
-const DRAGON_SCALE = 3; // 드래곤 모델 배율 (CHAR_SCALE이 한 번 더 곱해진다) // 캐릭터 모델(키 약 0.8칸)을 맵에 비해 조금 키운다
+const DRAGON_SCALE = 6; // 흑룡 모델 배율 (CHAR_SCALE이 한 번 더 곱해진다). 보스 방을 꽉 채우는 크기. 충돌 반지름(ENEMIES.boss.r)은 그대로 둔다 — 키우면 화살이 다 맞아 전설 장비 균형이 무너진다
 const Z_SCALE = 1 / 40; // 투사체 높이(px) → 3D 높이
 
 // 구역별 바닥·길 색은 data/core.ts의 ZONE_PALETTE
@@ -183,6 +185,14 @@ const PLAYER_LOOKS: Record<ClassId, Look> = {
   // 흰 가운에 안경을 쓴 학자 모습 + 끝에 보라 구슬이 빛나는 지팡이
   gnome: { model: 'sage', scale: [0.85, 0.78, 0.85], weapons: [{ ...SPEAR, model: 'staff', pos: [-0.02, -0.14, 0.05], rot: [0.5, 0, 0.25], scale: 1.4, glowTip: 0xb070ff, glowSize: 0.043 }], attack: 'attack-melee-right' },
 };
+/** 유니크 무기를 끼면 손에 든 무기 모양이 바뀐다: [직업][효과] → 그 직업의 겉모습 (없으면 PLAYER_LOOKS 그대로) */
+const UNIQUE_LOOKS: Partial<Record<ClassId, Partial<Record<WeaponEffect, Look>>>> = {
+  // 궁수 + 서리바람 활: 파란 수정이 빛나는 은빛 활
+  elf: { frost: { ...PLAYER_LOOKS.elf, weapons: [{ model: 'frostBow', bone: 'arm-left', pos: [0.03, 0.16, 0.12], rot: [0, 0, 0], scale: 1.6 }] } },
+};
+function playerLook(p: Player): Look {
+  return (p.weaponFx && UNIQUE_LOOKS[p.cls]?.[p.weaponFx]) || PLAYER_LOOKS[p.cls];
+}
 /** Quaternius 캐릭터 손(FistR)에 드는 무기. 손 안쪽은 원본 크기 단위라 크게 키운다 */
 const U_HAND = { bone: 'FistR', pos: [0, 0.3, 0] as [number, number, number], rot: [0, 0, 0] as [number, number, number] };
 const uLook = (model: UacpKey, size: number, attack: 'attack-melee-right' | 'holding-left-shoot', weapon?: { model: ModelKey; scale: number; glowTip?: number }): Look => ({
@@ -221,6 +231,9 @@ const ENEMY_LOOKS: Record<EnemyKind, Look> = {
   },
 };
 
+/** 던전의 묘비: 움직이지 않는 키 큰 비석 (보랏빛으로 물들인다) */
+const TOMB_LOOK: Look = { model: 'ntStoneTallC', scale: [1.3, 1.3, 1.3], tint: 0xc0a0ff, attack: '' };
+
 /** 특정 중간보스·문지기만 다른 모델로 그린다 (이름으로 찾는다). 없으면 ENEMY_LOOKS[kind] */
 const ELITE_LOOKS: Record<string, Look> = {
   [GATE_KEEPERS[0].name]: {
@@ -247,6 +260,13 @@ const ELITE_LOOKS: Record<string, Look> = {
   '늪의 문지기': { ...ENEMY_LOOKS.zombie, tint: 0x70b060 },
   '사막 도적왕': { ...ENEMY_LOOKS.bandit, tint: 0xffe0a0 },
   '모래 암살자': uLook('uNinjaSand', 1, 'attack-melee-right', { model: 'sword', scale: 2.8 }),
+  // 7구역 던전 보스: 금빛 사막 닌자, 다른 중간보스보다 한 번 더 크게
+  // 9구역 던전 보스: 해골 무법자 (붉은 눈, 도끼). 다른 중간보스보다 크게. 공격은 세 가지 중 하나를 쓴다
+  '해골 무법자': {
+    model: 'outlaw', scale: [1.35, 1.35, 1.35], attack: 'attack-melee-right',
+    anims: { idle: 'Idle', walk: 'Walk', sprint: 'Run', jump: 'Jump', die: 'Dead', hurt: 'Damage', 'attack-melee-right': 'Attack00', 'holding-right': 'Attack02', 'holding-left-shoot': 'Attack01' },
+  },
+  '모래 폭군': { ...uLook('uNinjaSand', 1.4, 'attack-melee-right', { model: 'sword', scale: 3.6, glowTip: 0xffc040 }), tint: 0xffd890 },
   '사막의 문지기': { ...ENEMY_LOOKS.raider, tint: 0xffd890 },
   '수정 수호자': { ...ENEMY_LOOKS.darkKnight, tint: 0xc0a0ff },
   '수정 마녀': { ...ENEMY_LOOKS.iceWitch, tint: 0xd0b0ff, weapons: [{ ...U_HAND, model: 'spear', scale: 3, glowTip: 0xc080ff }] },
@@ -295,7 +315,8 @@ export class World3D {
   private drops = new Map<number, THREE.Object3D>();
   private npcs: Char[] = []; // 상인처럼 제자리에서 움직이기만 하는 캐릭터
   private gates: { group: THREE.Group; open: boolean; t: number }[] = []; // 구역 출구의 철문 (열리면 땅속으로 내려간다)
-  private portals: { enter: THREE.Group; exit: THREE.Group } | null = null; // 던전 문 (맵 위 입구, 투기장 북쪽 출구)
+  private portals: { enter: THREE.Group; exit: THREE.Group }[] = []; // 던전마다 문 (맵 위 입구, 투기장 북쪽 출구)
+  private playerLookKeys = new Map<string, string>(); // 플레이어마다 지금 겉모습 (직업:유니크 무기 효과)
   /** 구역 날씨: 카메라가 그 구역 위에 있을 때 주변에 도는 입자 (3구역 눈, 5구역 불씨) */
   private weather: { pts: THREE.Points; zone: number; mode: 'fall' | 'rise' | 'drift' }[] = [];
   private camTarget = new THREE.Vector3();
@@ -370,6 +391,7 @@ export class World3D {
       ...(Object.keys(UACP) as UacpKey[]).map((k) => this.loadUacp(loader, k)),
       this.loadSlime(loader, 'slime', 'slime'),
       this.loadSlime(loader, 'slimePurple', 'slime_purple'),
+      this.loadOutlaw(loader),
     ]);
     this.buildWorld();
   }
@@ -449,6 +471,34 @@ export class World3D {
     const root = new THREE.Group();
     root.add(body);
     this.models.set(key, { scene: root, animations: g.animations });
+  }
+
+  /**
+   * 9구역 던전 보스 해골 무법자 (Kevin Iglesias, CC0). 원본 FBX 6.1을 GLB로 바꾼 것이라 텍스처는 따로 불러 입힌다 (도끼만 도끼 텍스처).
+   * 키가 약 3.44라 Kenney 캐릭터 키로 줄인다. 동작: Idle·Walk·Run·Attack00~02·Damage·Dead·Jump
+   */
+  private async loadOutlaw(loader: GLTFLoader) {
+    const [g, skin, axe] = await Promise.all([
+      loader.loadAsync(`${BASE}outlaw/outlaw.glb`),
+      new THREE.TextureLoader().loadAsync(`${BASE}outlaw/skeleton.jpg`),
+      new THREE.TextureLoader().loadAsync(`${BASE}outlaw/axe.jpg`),
+    ]);
+    for (const t of [skin, axe]) t.colorSpace = THREE.SRGBColorSpace; // 원본 FBX와 같이 flipY 그대로 (UV가 아래쪽 원점)
+    g.scene.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      mesh.castShadow = true;
+      mesh.frustumCulled = false;
+      const m = mesh.material as THREE.MeshStandardMaterial;
+      m.map = m.name === 'Axe' ? axe : skin;
+      m.needsUpdate = true;
+    });
+    const body = new THREE.Group();
+    body.scale.setScalar(0.85 / 3.44);
+    body.add(g.scene);
+    const root = new THREE.Group();
+    root.add(body);
+    this.models.set('outlaw', { scene: root, animations: g.animations });
   }
 
   /** 구역별 몬스터 모델 하나 (키 약 3.1 → Kenney 캐릭터와 비슷한 키로 줄인다) */
@@ -753,22 +803,29 @@ export class World3D {
   }
 
   /** 문지기가 쓰러진 문은 맵에서 열고(길이 되게), 철문을 땅속으로 천천히 내린다 */
-  /** 던전 투기장 꾸미기(둘레의 화로·부서진 기둥)와 던전 문 두 개를 만든다 */
+  /** 던전마다 투기장 꾸미기(둘레 장식)와 던전 문 두 개(입구·출구)를 만든다. 화산은 화로·부서진 기둥, 사막은 오벨리스크·모래 바위·선인장 */
   private buildDungeon(put: (k: ModelKey, x: number, z: number, rot?: number, s?: number, y?: number) => void) {
-    const d = this.level.dungeon;
-    if (!d) return;
-    const cx = d.center.x * U, cz = d.center.y * U, r = d.radius * U;
-    for (let i = 0; i < 8; i++) {
-      const a = (i / 8) * Math.PI * 2 + Math.PI / 8;
-      const x = cx + Math.cos(a) * (r - 0.9), z = cz + Math.sin(a) * (r - 0.9);
-      if (i % 2) put('svCampfire', x, z, a, 2.2); // 화로
-      else put('aColumnBroken', x, z, a, 1.1);
+    for (const d of this.level.dungeons) {
+      const def = DUNGEONS[d.zone];
+      const cx = d.center.x * U, cz = d.center.y * U, r = d.radius * U;
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2 + Math.PI / 8;
+        const x = cx + Math.cos(a) * (r - 0.9), z = cz + Math.sin(a) * (r - 0.9);
+        if (def?.theme === 'grave') {
+          // 묘지: 앙상한 나무와 그루터기, 낮은 비석
+          if (i % 2) put('ntTreeThin', x, z, a, 1.2);
+          else put(i % 4 ? 'ntStump' : 'ntObelisk', x, z, a, i % 4 ? 1.6 : 0.7);
+        } else if (def?.theme === 'desert') {
+          if (i % 2) put('ntObelisk', x, z, a, 1.3);
+          else put(i % 4 ? 'svSandA' : 'ntCactusTall', x, z, a, i % 4 ? 1.9 : 1.7);
+        } else if (i % 2) put('svCampfire', x, z, a, 2.2); // 화로
+        else put('aColumnBroken', x, z, a, 1.1);
+      }
+      const exit = dungeonExit(d);
+      const g = { enter: this.makePortal(d.portal.x * U, d.portal.y * U, def?.color ?? 0xff5a30), exit: this.makePortal(exit.x * U, exit.y * U, 0x60c0ff) };
+      g.exit.visible = false;
+      this.portals.push(g);
     }
-    this.portals = {
-      enter: this.makePortal(d.portal.x * U, d.portal.y * U, 0xff5a30),
-      exit: this.makePortal(cx, (d.center.y - d.radius) * U + 2, 0x60c0ff),
-    };
-    this.portals.exit.visible = false;
   }
 
   /** 던전 문: 바닥에 빛나는 고리 두 개와 가운데 빛 웅덩이 (돌면서 빛 알갱이가 솟는다) */
@@ -788,11 +845,12 @@ export class World3D {
 
   /** 던전 문 보이기: 입구는 던전이 열려 있는 동안(시작 전·싸우는 중), 출구는 클리어한 뒤 */
   private syncPortals(s: Snapshot, dt: number) {
-    if (!this.portals || !s.dungeon) return;
-    const st = s.dungeon.state;
-    this.portals.enter.visible = st === 'open' || st === 'active';
-    this.portals.exit.visible = st === 'cleared';
-    for (const g of [this.portals.enter, this.portals.exit]) {
+    this.portals.forEach((pg, i) => {
+      const st = s.dungeons[i]?.state;
+      pg.enter.visible = st === 'open' || st === 'active';
+      pg.exit.visible = st === 'cleared';
+    });
+    for (const g of this.portals.flatMap((pg) => [pg.enter, pg.exit])) {
       if (!g.visible) continue;
       g.getObjectByName('spin')!.rotation.y += dt * 2.5;
       g.scale.setScalar(1 + Math.sin(this.clock * 3) * 0.05);
@@ -941,7 +999,16 @@ export class World3D {
     for (const p of s.players) {
       seen.add(p.id);
       let ch = this.players.get(p.id);
-      if (!ch) this.players.set(p.id, (ch = this.makeChar(PLAYER_LOOKS[p.cls])));
+      // 유니크 무기를 끼거나 빼면 손에 든 무기 모양이 바뀌므로 캐릭터를 다시 만든다
+      const lookKey = `${p.cls}:${p.weaponFx ?? ''}`;
+      if (ch && this.playerLookKeys.get(p.id) !== lookKey) {
+        this.scene.remove(ch.root);
+        ch = undefined;
+      }
+      if (!ch) {
+        this.players.set(p.id, (ch = this.makeChar(playerLook(p))));
+        this.playerLookKeys.set(p.id, lookKey);
+      }
       this.placeChar(ch, p.x, p.y, p.aim);
       this.animate(ch, p, dt);
       // 무적(피격 직후) 깜빡임
@@ -977,7 +1044,7 @@ export class World3D {
       let ent = this.enemies.get(e.id);
       if (!ent) {
         const size = e.elite ? ELITE.scale : 1;
-        const look = (e.elite && ELITE_LOOKS[e.elite]) || ENEMY_LOOKS[e.kind];
+        const look = e.tomb ? TOMB_LOOK : (e.elite && ELITE_LOOKS[e.elite]) || ENEMY_LOOKS[e.kind];
         ent = this.makeChar({ ...look, scale: [look.scale[0] * size, look.scale[1] * size, look.scale[2] * size] });
         this.enemies.set(e.id, ent);
         if (e.elite) {

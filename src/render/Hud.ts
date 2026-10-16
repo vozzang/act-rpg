@@ -126,15 +126,16 @@ export class Hud {
   }
 
   /** 매 프레임. 그래픽은 여기서 지우고 다시 그린다 (미니맵 점은 MapView가 같은 그래픽에 덧그림). */
-  /** inDungeon: 내가 던전 투기장 안에 있는지 (웨이브 진행을 위쪽 가운데에 보여 준다) */
-  update(s: Snapshot, me: Player | undefined, inDungeon = false) {
+  /** dungeonIdx: 내가 들어가 있는 던전 번호 (-1이면 밖). 그 던전의 웨이브·보스 진행을 위쪽 가운데에 보여 준다 */
+  update(s: Snapshot, me: Player | undefined, dungeonIdx = -1) {
     const g = this.g;
     g.clear();
     this.drawPanels(s);
-    const dg = s.dungeon;
-    if (dg && inDungeon && dg.state === 'active') {
-      this.dungeonText.setText(dg.wave === 0 ? '던전 · 곧 적이 몰려온다' : `던전 웨이브 ${dg.wave} / ${dg.waves}  ·  남은 적 ${dg.left}`).setVisible(true);
-    } else if (dg && inDungeon && dg.state === 'cleared') {
+    const dg = s.dungeons[dungeonIdx];
+    if (dg && dg.state === 'active') {
+      const boss = dg.boss ? `  ·  ${dg.boss.name} ${Math.ceil(dg.boss.hp * 100)}%` : '';
+      this.dungeonText.setText(dg.wave === 0 ? `${dg.name} · 곧 적이 몰려온다` : `${dg.name} 웨이브 ${dg.wave} / ${dg.waves}  ·  남은 적 ${dg.left}${boss}`).setVisible(true);
+    } else if (dg && dg.state === 'cleared') {
       this.dungeonText.setText('던전 클리어! 보상 상자를 줍고 북쪽 파란 문으로 나가세요').setVisible(true);
     } else this.dungeonText.setVisible(false);
     let tip: Tip | null = null;

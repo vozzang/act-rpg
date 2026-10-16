@@ -20,7 +20,7 @@ export class View3D {
   private dist = DEFAULT_DIST;
   private bounds = { w: 0, h: 0 }; // 맵 크기 (월드 px). 카메라가 맵 밖 허공을 보지 않게 한다
   private snap: Snapshot = {
-    tick: 0, zone: 1, status: 'playing', players: [], enemies: [], projectiles: [], drops: [], shops: [], events: [], boss: null, gates: [], dungeon: null,
+    tick: 0, zone: 1, status: 'playing', players: [], enemies: [], projectiles: [], drops: [], shops: [], events: [], boss: null, gates: [], dungeons: [],
   };
   isOpen = false;
 

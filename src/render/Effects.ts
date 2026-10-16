@@ -2,7 +2,7 @@
 import Phaser from 'phaser';
 import { CLASSES, POINTS_PER_LEVEL, RARITY, VIEW_H, VIEW_W, itemName } from '../game/data';
 import type { GameEvent, Player, Snapshot } from '../game/types';
-import { downloadResultImage, playTime } from './resultImage';
+import { downloadResultImage, dungeonSummary, playTime } from './resultImage';
 import { hex, makeText } from './ui';
 import type { World3D } from './World3D';
 
@@ -49,6 +49,20 @@ export class Effects {
       case 'warp':
         w.fx.warp(e.x, e.y);
         break;
+      case 'undying': {
+        // 불사: 보랏빛 '불사!'와 솟구치는 불꽃
+        const p = at(e.x, e.y, 60);
+        this.popText(p.x, p.y, '불사!', '#d0a0ff', 22, 900);
+        w.fx.undying(e.x, e.y);
+        break;
+      }
+      case 'block': {
+        // 절대방어: 금빛 '절대방어!'가 튀어나오고 몸 앞에 방패 빛
+        const p = at(e.x, e.y, 60);
+        this.popText(p.x, p.y, '절대방어!', '#ffd860', 20, 800);
+        w.fx.aegis(e.x, e.y);
+        break;
+      }
       case 'dodge': {
         // 회피: 하늘색 '회피!'가 튀어나오고 몸 주위에 바람 고리
         const p = at(e.x, e.y, 60);
@@ -219,7 +233,7 @@ export class Effects {
     // 전체 요약
     const time = playTime(s.tick);
     const kills = s.players.reduce((n, p) => n + p.kills, 0);
-    const dg = s.dungeon ? (s.dungeon.cleared ? '던전 클리어' : s.dungeon.state === 'open' ? '던전 안 들어감' : '던전 실패') : '';
+    const dg = dungeonSummary(s);
     text(VIEW_W / 2, 92, [`${win ? '클리어 시간' : '플레이 시간'} ${time}`, `처치 ${kills.toLocaleString()}마리`, `${win ? '흑룡 처치' : `${s.zone}구역까지`}`, dg].filter(Boolean).join('   ·   '), 15, '#d8e4ff').setOrigin(0.5);
 
     // 사람마다 기록 표
