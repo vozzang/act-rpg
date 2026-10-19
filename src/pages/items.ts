@@ -2,7 +2,7 @@
 // 드랍 확률·상점 값·조합법은 게임 코드(data/)의 규칙으로 바로 계산하므로, 목록이나 규칙을 고치면 페이지도 바뀐다.
 import './pages.css';
 import {
-  ATTR_KEYS, ATTR_NAMES, BAG_SIZE, CLASSES, FORGE, FOOD, INV_SIZE, ITEM_DROP_MULT, ITEM_LIST, RARITY, RECIPES, SHOP, UNIQUE_DROP, ZONE_NAMES, DUNGEONS, effectText, recipeText, shopItemPrice,
+  ATTR_KEYS, ATTR_NAMES, BAG_SIZE, CLASSES, FORGE, FOOD, INV_SIZE, ITEM_DROP_MULT, ITEM_LIST, RARITY, RECIPES, SHOP, UNIQUE_DROP, ZONE_NAMES, DUNGEONS, effectText, recipeName, recipeText, shopItemPrice,
   type ItemDef, type ItemSource,
 } from '../game/data';
 import type { ItemStats, Rarity, Slot } from '../game/types';
@@ -45,8 +45,8 @@ function dropChance(d: ItemDef, weights: Record<Rarity, number>): number {
 const DROP_W = Object.fromEntries(ORDER.map((r) => [r, RARITY[r].weight])) as Record<Rarity, number>;
 const pct = (p: number) => (p >= 0.1 ? `${(p * 100).toFixed(0)}%` : p >= 0.01 ? `${(p * 100).toFixed(1)}%` : `${(p * 100).toFixed(2)}%`);
 
-/** 이 장비가 결과로 나오는 조합법 (키의 단계 숫자를 뺀 것이 조합법 키) */
-const recipeOf = (d: ItemDef) => RECIPES.find((r) => d.key === `${r.key}${d.tier}`);
+/** 이 장비가 결과로 나오는 구역별 조합법 */
+const recipeOf = (d: ItemDef) => RECIPES.find((r) => d.key === r.resultKey);
 
 function statCell(d: ItemDef, k: keyof ItemStats) {
   const v = d.stats[k];
@@ -75,7 +75,7 @@ function render() {
       how.push(`<span class="chip hot">${SHOP_OF[base] ?? '상점'} ${shopItemPrice(d.rarity, d.tier * 2 - 1).toLocaleString()} G</span>`);
     }
     const rc = recipeOf(d);
-    if (rc) how.push(`<span class="chip hot">조합: ${recipeText(rc)}</span>`);
+    if (rc) how.push(`<span class="chip hot">${rc.zone}구역 조합: ${recipeText(rc)}</span>`);
     if (d.from.includes('unique')) how.push(`<span class="chip hot">${UNIQUE_DROP.fromZone}구역부터 중간보스·문지기 ${Math.round(UNIQUE_DROP.chance * 100)}% (한 판에 하나)</span>`);
     if (d.cls) how.push(`<span class="chip">${CLASSES[d.cls].name} 전용</span>`);
     for (const [z, dg] of Object.entries(DUNGEONS)) if (dg.reward.kind === 'item' && dg.reward.key === d.key) how.push(`<span class="chip hot">${z}구역 ${dg.name} 클리어 보상</span>`);
@@ -94,9 +94,9 @@ function render() {
 
   // 조합법 표
   const recipeRows = RECIPES.map((r) => {
-    const results = ITEM_LIST.filter((d) => recipeOf(d) === r).sort((a, b) => a.tier - b.tier);
-    return `<tr><td>${r.title}</td><td class="l">${recipeText(r)}</td>
-      <td class="l wrap">${results.map((d) => `<span class="chip" title="${tierText(d.tier)}">${d.tier}단계: ${statText(d.stats)}</span>`).join('')}</td></tr>`;
+    const result = ITEM_LIST.find((d) => d.key === r.resultKey)!;
+    return `<tr><td>${recipeName(r)}</td><td>${r.zone}구역</td><td class="l">${recipeText(r)}</td>
+      <td class="l wrap">${statText(result.stats)}</td></tr>`;
   }).join('');
 
   $('out').innerHTML = `
@@ -115,9 +115,9 @@ function render() {
         <tbody>${rarityRows}</tbody></table></div></div>
     <div class="card"><h2>대장간 조합법</h2>
       <div class="sub">짝수 구역 상점 옆 대장간에서 아이템 상자·가방의 장비 ${FORGE.min}~${FORGE.max}개를 넣는다 (값: 구역 × ${FORGE.feePerZone} G, 재료는 사라진다).
-        <b>조합하기</b>: 재료가 정확히 맞으면 아래 전설 장비가 나온다 — 결과 단계는 재료 중 가장 깊은 단계와 대장간 구역의 단계 중 높은 쪽.
+        <b>조합하기</b>: 대장간 구역에 맞는 재료를 정확히 넣으면 지정된 전설 장비가 나온다. 구역마다 레시피와 결과가 다르다.
         <b>랜덤 조합하기</b>: 재료 중 가장 좋은 등급에서 시작해 재료 3개면 55%, 2개면 25% 확률로 한 등급 오른다 (재료가 모두 같은 등급이면 +15%). 그 등급·단계의 드랍 장비 중 하나가 나온다.</div>
-      <div class="scroll"><table><thead><tr><th>결과</th><th class="l">재료</th><th class="l">단계별 수치</th></tr></thead>
+      <div class="scroll"><table><thead><tr><th>결과</th><th>대장간</th><th class="l">재료</th><th class="l">수치</th></tr></thead>
         <tbody>${recipeRows}</tbody></table></div></div>
     <div class="card"><h2>그 밖의 것</h2>
       <div class="sub">아이템 상자 ${INV_SIZE}칸(착용 중 — 수치가 능력치에 더해진다) · 가방 ${BAG_SIZE}칸(보관만). 상자가 차면 주운 장비는 가방으로 간다.<br>

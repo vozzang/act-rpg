@@ -2,7 +2,7 @@
 // [조합하기](맞는 조합법이 있으면 정해진 고유 장비) 또는 [랜덤 조합하기](무작위 장비)를 누른다. 오른쪽에 조합법 목록이 있다.
 // 게임패드: 방향패드 고르기, A 고르기·풀기, X 조합하기, Y 랜덤 조합하기, B 닫기.
 import Phaser from 'phaser';
-import { FORGE, RARITY, RECIPES, SHOP_TYPES, VIEW_W, itemName, itemStatText, matchRecipe, recipeText } from '../game/data';
+import { FORGE, MAX_RECIPES_PER_FORGE, RARITY, SHOP_TYPES, VIEW_W, itemName, itemStatText, matchRecipe, recipeName, recipeText, recipesForZone } from '../game/data';
 import type { Item, Player, Shop } from '../game/types';
 import type { Device } from './Hud';
 import { makeText } from './ui';
@@ -66,7 +66,7 @@ export class ForgePanel {
       this.rows.push({ name: t(X + 20, y + 5, 13), stat: t(X + LIST_W - 8, y + 6, 11).setOrigin(1, 0).setAlpha(0.75), zone });
     }
     this.recipeTitle = t(X + LIST_W + 20, Y + 56, 14).setColor('#ffd040');
-    RECIPES.forEach((_, i) => this.recipeRows.push(t(X + LIST_W + 20, Y + 80 + i * 22, 12)));
+    for (let i = 0; i < MAX_RECIPES_PER_FORGE; i++) this.recipeRows.push(t(X + LIST_W + 20, Y + 80 + i * 22, 12));
     this.status = t(X + 18, Y + H - 78, 13).setWordWrapWidth(W - 36);
     const btn = (x: number, label: string, random: boolean) => {
       const b = t(x, Y + H - 50, 16).setPadding(14, 6, 14, 6).setBackgroundColor('#3a2a14').setInteractive({ useHandCursor: true });
@@ -169,11 +169,17 @@ export class ForgePanel {
 
     // 조합법 목록: 지금 고른 장비에 맞는 조합법은 밝게
     const sel = this.selected();
-    const match = sel.length >= FORGE.min ? matchRecipe(sel) : null;
-    this.recipeTitle.setText('조합법 (재료 → 결과, 모두 전설 등급)');
-    RECIPES.forEach((rc, i) => {
+    const match = sel.length >= FORGE.min ? matchRecipe(sel, shop.zone) : null;
+    this.recipeTitle.setText(`${shop.zone}구역 조합법 (재료 → 결과)`);
+    const recipes = recipesForZone(shop.zone);
+    this.recipeRows.forEach((row, i) => {
+      const rc = recipes[i];
+      if (!rc) {
+        row.setText('');
+        return;
+      }
       const hit = match === rc;
-      this.recipeRows[i].setText(`${hit ? '▶ ' : ''}${recipeText(rc)}  →  ${rc.title}`).setColor(hit ? '#ffd040' : '#c8ccd8').setAlpha(hit ? 1 : 0.75);
+      row.setText(`${hit ? '▶ ' : ''}${recipeText(rc)}  →  ${recipeName(rc)}`).setColor(hit ? '#ffd040' : '#c8ccd8').setAlpha(hit ? 1 : 0.75);
     });
 
     // 상태와 버튼
@@ -181,7 +187,7 @@ export class ForgePanel {
     const rich = me.gold >= fee;
     this.status.setText(!enough ? `장비를 ${FORGE.min}개 이상 고르세요 (지금 ${sel.length}개)`
       : !rich ? `돈이 부족합니다 (${fee} G 필요)`
-      : match ? `조합하기: [전설] ${match.title} 을(를) 만듭니다. 랜덤 조합하기: 무작위 장비 (재료가 많고 같은 등급일수록 한 단계 위 등급이 잘 나옴)`
+      : match ? `조합하기: [전설] ${recipeName(match)} 을(를) 만듭니다. 랜덤 조합하기: 무작위 장비 (재료가 많고 같은 등급일수록 한 단계 위 등급이 잘 나옴)`
       : '맞는 조합법이 없습니다. 랜덤 조합하기로 무작위 장비를 만들 수 있습니다 (재료는 사라집니다)');
     this.btnRecipe.setAlpha(enough && rich && match ? 1 : 0.4);
     this.btnRandom.setAlpha(enough && rich ? 1 : 0.4);

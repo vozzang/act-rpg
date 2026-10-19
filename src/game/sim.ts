@@ -1,7 +1,7 @@
 // 게임 시뮬레이션. 호스트에서만 실행되고, 클라이언트는 스냅샷을 받아 그리기만 한다.
 import {
   AGGRO_RANGE, BAG_SIZE, FORGE, ITEM_DROP_MULT, TICK_RATE, ATTR_EFFECT, ATTR_KEYS, CLASSES, ELITE, ELITES, ENEMIES, GATE_KEEPERS, FOOD, INV_SIZE, POINTS_PER_LEVEL, REVIVE_TIME, SHOP, SKILL, TILE, ZONE_NAMES,
-  deriveStats, makeItem, partyHpScale, skillMpCost, canEquip, DUNGEONS, type DungeonDef, ITEM_LIST, UNIQUE_DROP, WEAPON_EFFECTS, itemFromDef, PASSIVE, arrowCount, ironSkinRate, lifestealRate, manaFlowRate, type EliteDef, shopStock, matchRecipe, recipeItem, randomForgeRarity, totalAttrs, xpForLevel, zoneScale, type AttackDef,
+  deriveStats, makeItem, partyHpScale, skillMpCost, canEquip, DUNGEONS, type DungeonDef, ITEM_LIST, UNIQUE_DROP, WEAPON_EFFECTS, itemFromDef, PASSIVE, arrowCount, ironSkinRate, lifestealRate, manaFlowRate, type EliteDef, shopStock, matchRecipe, recipeItem, recipeName, randomForgeRarity, totalAttrs, xpForLevel, zoneScale, type AttackDef,
 } from './data';
 import { blockedAt, dungeonExit, mulberry32, openGate, zoneOfTx, type DungeonArena, type Level } from './level';
 import { gameLevel } from './world';
@@ -817,10 +817,10 @@ export class Sim {
       const rarity = randomForgeRarity(items, this.rng);
       result = makeItem(this.nextId++, zone, this.rng, { common: 0, rare: 0, epic: 0, legendary: 0, [rarity]: 1 });
     } else {
-      const r = matchRecipe(items);
+      const r = matchRecipe(items, shop.zone);
       if (!r) return fail('맞는 조합법이 없어요 (오른쪽 조합법을 보세요)');
-      result = recipeItem(r, zone, this.nextId++);
-      recipe = r.title;
+      result = recipeItem(r, this.nextId++);
+      recipe = recipeName(r);
     }
     // 재료를 빼고 결과를 넣는다 (재료가 빠진 자리가 있으니 항상 들어간다)
     for (const k of uniq.values()) {
