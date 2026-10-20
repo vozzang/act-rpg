@@ -1,7 +1,7 @@
 // 게임 시뮬레이션. 호스트에서만 실행되고, 클라이언트는 스냅샷을 받아 그리기만 한다.
 import {
   AGGRO_RANGE, BAG_SIZE, FORGE, ITEM_DROP_MULT, TICK_RATE, ATTR_EFFECT, ATTR_KEYS, CLASSES, ELITE, ELITES, ENEMIES, GATE_KEEPERS, FOOD, INV_SIZE, POINTS_PER_LEVEL, REVIVE_TIME, SHOP, SKILL, TILE, ZONE_NAMES,
-  deriveStats, makeItem, partyHpScale, skillMpCost, canEquip, DUNGEONS, type DungeonDef, ITEM_LIST, UNIQUE_DROP, WEAPON_EFFECTS, itemFromDef, PASSIVE, arrowCount, ironSkinRate, lifestealRate, manaFlowRate, type EliteDef, shopStock, matchRecipe, recipeItem, recipeName, randomForgeRarity, totalAttrs, xpForLevel, zoneScale, type AttackDef,
+  deriveStats, makeItem, partyHpScale, partyAtkScale, partyDefScale, skillMpCost, canEquip, DUNGEONS, type DungeonDef, ITEM_LIST, UNIQUE_DROP, WEAPON_EFFECTS, itemFromDef, PASSIVE, arrowCount, ironSkinRate, lifestealRate, manaFlowRate, type EliteDef, shopStock, matchRecipe, recipeItem, recipeName, randomForgeRarity, totalAttrs, xpForLevel, zoneScale, type AttackDef,
 } from './data';
 import { blockedAt, dungeonExit, mulberry32, openGate, zoneOfTx, type DungeonArena, type Level } from './level';
 import { gameLevel } from './world';
@@ -58,7 +58,7 @@ export class Sim {
     this.rng = mulberry32(seed ^ 0x9e3779b9);
     this.gates = this.level.gates.map(() => false);
     lobby.forEach((lp, i) => this.players.push(this.createPlayer(lp, i)));
-    const party = partyHpScale(this.players.length);
+    const party = this.players.length;
     for (const s of this.level.spawns) {
       const elite = s.gate !== undefined ? GATE_KEEPERS[s.gate] : s.elite !== undefined ? ELITES[s.zone - 1][s.elite] : undefined;
       const e = this.createEnemy(s.kind, s.zone, party, elite);
@@ -118,17 +118,19 @@ export class Sim {
   }
 
   /** elite를 주면 그 능력치로 중간보스를 만든다 (ELITES) */
-  private createEnemy(kind: EnemyKind, zone: number, party: number, elite?: EliteDef): Enemy {
+  private createEnemy(kind: EnemyKind, zone: number, players: number, elite?: EliteDef): Enemy {
     const def = ENEMIES[kind];
     // 흑룡은 구역 배율 없이 자기 능력치 그대로
     const zs = kind === 'boss' ? { hp: 1, atk: 1, def: 0, xp: 1 } : zoneScale(zone);
     const base = elite ?? def;
-    const hp = Math.round(base.hp * zs.hp * party);
+    const hp = Math.round(base.hp * zs.hp * partyHpScale(players));
     return {
       id: this.nextId++, kind, zone, elite: elite?.name ?? null, gate: null, active: false,
       // 몸집이 커져도 타일 한 칸 틈은 지나가야 하므로 충돌 반지름은 15까지만
       x: 0, y: 0, vx: 0, vy: 0, r: elite ? Math.min(15, def.r * 1.25) : def.r, aim: Math.PI,
-      hp, maxHp: hp, atk: Math.round(base.atk * zs.atk), def: base.def + zs.def,
+      hp, maxHp: hp,
+      atk: Math.round(base.atk * zs.atk * partyAtkScale(players)),
+      def: Math.round((base.def + zs.def) * partyDefScale(players)),
       xp: Math.round(def.xp * zs.xp * (elite ? ELITE.xp : 1)),
       hurt: 0, stun: 0, slow: 0, burn: 0, burnDps: 0, bleed: 0, bleedStacks: 0, bleedDps: 0, dotBy: '', dotTick: 0, rush: 0, taunt: 0, tauntBy: '', timer: 1 + this.rng(), state: 'move', stateTime: 0,
       z: 0, tx: 0, ty: 0,
@@ -1106,7 +1108,7 @@ export class Sim {
           st.tombTimer -= dt;
           if (st.tombTimer <= 0) {
             st.tombTimer = w.tombs.every;
-            const party = partyHpScale(this.players.length);
+            const party = this.players.length;
             let alive = mine.length;
             for (const t of tombs) {
               if (alive >= w.tombs.max) break;
@@ -1170,7 +1172,7 @@ export class Sim {
 
   /** 부하 n마리를 투기장 둘레 무작위 자리에 */
   private spawnDungeonAdds(d: DungeonArena, idx: number, def: DungeonDef, n: number) {
-    const party = partyHpScale(this.players.length);
+    const party = this.players.length;
     for (let i = 0; i < n; i++) {
       const kind = def.pool[Math.floor(this.rng() * def.pool.length)];
       this.placeInArena(d, idx, this.createEnemy(kind, def.zone, party), this.rng() * Math.PI * 2);
@@ -1181,7 +1183,7 @@ export class Sim {
   private spawnDungeonWave(d: DungeonArena, idx: number) {
     const st = this.dungeons[idx], def = DUNGEONS[d.zone];
     const w = def.waves[st.wave++];
-    const party = partyHpScale(this.players.length);
+    const party = this.players.length;
     for (let i = 0; i < w.count; i++) {
       const kind = def.pool[Math.floor(this.rng() * def.pool.length)];
       this.placeInArena(d, idx, this.createEnemy(kind, def.zone, party), (i / w.count) * Math.PI * 2 + (this.rng() - 0.5) * 0.3);
@@ -1198,7 +1200,7 @@ export class Sim {
         const a = (i / w.tombs.count) * Math.PI * 2 + Math.PI / 4;
         t.x = d.center.x + Math.cos(a) * d.radius * 0.55;
         t.y = d.center.y + Math.sin(a) * d.radius * 0.55;
-        t.hp = t.maxHp = Math.round(w.tombs.hp * zs.hp * party);
+        t.hp = t.maxHp = Math.round(w.tombs.hp * zs.hp * partyHpScale(party));
         t.atk = 0;
         t.def = 0;
         t.xp = 0;
@@ -1767,7 +1769,7 @@ export class Sim {
   }
 
   private summonAdds(boss: Enemy) {
-    const party = partyHpScale(this.players.length);
+    const party = this.players.length;
     for (const side of [-1, 1]) {
       const g = this.createEnemy('goblin', 4, party);
       g.active = true;

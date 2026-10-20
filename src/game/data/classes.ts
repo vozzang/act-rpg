@@ -43,7 +43,7 @@ export function skillMpCost(sk: SkillDef, level: number) {
 }
 
 /** 스킬을 배우는 레벨. 마지막이 최종 스킬. */
-export const SKILL_UNLOCKS = [1, 4, 7, 10];
+export const SKILL_UNLOCKS = [3, 10, 15, 20];
 
 /** 직업 하나의 모든 설정 */
 export interface ClassDef {
@@ -71,14 +71,14 @@ export const CLASSES: Record<ClassId, ClassDef> = {
     name: '검사', race: '휴먼', color: 0x4a90e2, r: 12, height: 50, speed: 170, aggro: 1,
     mainAttr: 'str',
     attrs: { str: 10, dex: 5, int: 3, vit: 7 },
-    attrGrowth: { str: 1.25, dex: 0.5, int: 0, vit: 0.75 },
+    attrGrowth: { str: 1.25, dex: 0.5, int: 0.1, vit: 0.75 },
     bonus: { hp: 56, atk: 6, def: 1, crit: 0.056, mp: 50, mpLv: 4, mpRegen: 1.5 },
     attack: { kind: 'melee', cd: 0.32, mult: 1.0, range: 62, arc: 1.0, knock: 200 },
     skills: [
-      { name: '돌진 베기', cd: 5, mp: 10, unlock: 1, desc: '조준 방향으로 돌진하며 지나가는 적을 벤다. 돌진 중 무적.' },
-      { name: '회오리 베기', cd: 7, mp: 20, unlock: 4, desc: '제자리에서 회전하며 주변의 모든 적을 벤다.' },
-      { name: '전투 함성', cd: 18, mp: 30, unlock: 7, desc: '주변 동료와 자신의 공격력을 8초간 25% 올린다.' },
-      { name: '검기 폭풍', cd: 20, mp: 60, unlock: 10, desc: '거대한 검기를 날려 일직선의 모든 적을 베어 버린다.' },
+      { name: '돌진 베기', cd: 5, mp: 10, unlock: 3, desc: '조준 방향으로 돌진하며 지나가는 적을 벤다. 돌진 중 무적.' },
+      { name: '회오리 베기', cd: 7, mp: 20, unlock: 10, desc: '제자리에서 회전하며 주변의 모든 적을 벤다.' },
+      { name: '전투 함성', cd: 18, mp: 30, unlock: 15, desc: '주변 동료와 자신의 공격력을 8초간 25% 올린다.' },
+      { name: '검기 폭풍', cd: 20, mp: 60, unlock: 20, desc: '거대한 검기를 날려 일직선의 모든 적을 베어 버린다.' },
     ],
     passive: { name: '흡혈 베기', desc: '기본 공격으로 준 피해의 일부만큼 HP를 회복한다. 레벨이 오를수록 늘어난다.' },
     weaponNoun: '장검',
@@ -90,14 +90,14 @@ export const CLASSES: Record<ClassId, ClassDef> = {
     mainAttr: 'vit',
     atkAttr: 'str',
     attrs: { str: 9, dex: 2, int: 2, vit: 12 },
-    attrGrowth: { str: 0.75, dex: 0.25, int: 0.25, vit: 1.25 },
+    attrGrowth: { str: 0.75, dex: 0.25, int: 0.2, vit: 1.4 },
     bonus: { hp: 104, atk: 4, def: 4.65, crit: 0.018, mp: 60, mpLv: 4, mpRegen: 1.5 },
     attack: { kind: 'melee', cd: 0.6, mult: 1.4, range: 58, arc: 1.3, knock: 380 },
     skills: [
-      { name: '도발', cd: 12, mp: 15, unlock: 1, desc: '주변 적의 시선을 끌고 4초간 받는 피해 60% 감소.' },
-      { name: '대지 강타', cd: 8, mp: 20, unlock: 4, desc: '땅을 내리쳐 주변 적에게 피해를 주고 기절시킨다.' },
-      { name: '방패 돌진', cd: 9, mp: 25, unlock: 7, desc: '방패를 앞세워 돌진하며 부딪힌 적을 날려 보내고 기절시킨다.' },
-      { name: '산의 수호', cd: 30, mp: 70, unlock: 10, desc: '주변 동료가 6초간 받는 피해를 절반으로 줄이고 체력을 20% 회복시킨다.' },
+      { name: '도발', cd: 12, mp: 15, unlock: 3, desc: '주변 적의 시선을 끌고 4초간 받는 피해 60% 감소.' },
+      { name: '대지 강타', cd: 8, mp: 20, unlock: 10, desc: '땅을 내리쳐 주변 적에게 피해를 주고 기절시킨다.' },
+      { name: '방패 돌진', cd: 9, mp: 25, unlock: 15, desc: '방패를 앞세워 돌진하며 부딪힌 적을 날려 보내고 기절시킨다.' },
+      { name: '산의 수호', cd: 30, mp: 70, unlock: 20, desc: '주변 동료가 6초간 받는 피해를 절반으로 줄이고 체력을 20% 회복시킨다.' },
     ],
     passive: { name: '강철 피부', desc: '맞아도 덜 밀려나고, 레벨이 오를수록 받는 피해가 줄어든다.' },
     weaponNoun: '전투도끼',
@@ -107,14 +107,14 @@ export const CLASSES: Record<ClassId, ClassDef> = {
     name: '궁수', race: '엘프', color: 0x4caf50, r: 11, height: 56, speed: 180, aggro: 1.2,
     mainAttr: 'dex',
     attrs: { str: 4, dex: 12, int: 4, vit: 5 },
-    attrGrowth: { str: 0.25, dex: 1.5, int: 0.25, vit: 0.25 }, // 연발 사격(화살 여러 발)이 있어 다른 직업보다 성장을 낮게
+    attrGrowth: { str: 0.35, dex: 1.5, int: 0.25, vit: 0.25 }, // 연발 사격(화살 여러 발)이 있어 다른 직업보다 성장을 낮게
     bonus: { hp: 42, atk: 4.2, def: 1, crit: 0.106, mp: 55, mpLv: 5, mpRegen: 1.8 },
     attack: { kind: 'projectile', cd: 0.42, mult: 0.75, speed: 520, proj: 'arrow', range: 480, aoe: 0, arcHeight: 60, assist: { cone: 0.7, turn: 6 } },
     skills: [
-      { name: '부채 사격', cd: 6, mp: 12, unlock: 1, desc: '적을 관통하는 화살 5발을 부채꼴로 쏜다.' },
-      { name: '저격', cd: 6, mp: 18, unlock: 4, desc: '멀리까지 꿰뚫는 강력한 화살 한 발. 공격력 3배.' },
-      { name: '화살비', cd: 12, mp: 35, unlock: 7, desc: '조준한 곳에 화살을 비처럼 쏟아붓는다.' },
-      { name: '폭풍의 화살', cd: 20, mp: 60, unlock: 10, desc: '사방으로 관통하는 화살 16발을 동시에 쏜다.' },
+      { name: '부채 사격', cd: 6, mp: 12, unlock: 3, desc: '적을 관통하는 화살 5발을 부채꼴로 쏜다.' },
+      { name: '저격', cd: 6, mp: 18, unlock: 10, desc: '멀리까지 꿰뚫는 강력한 화살 한 발. 공격력 3배.' },
+      { name: '화살비', cd: 12, mp: 35, unlock: 15, desc: '조준한 곳에 화살을 비처럼 쏟아붓는다.' },
+      { name: '폭풍의 화살', cd: 20, mp: 60, unlock: 20, desc: '사방으로 관통하는 화살 16발을 동시에 쏜다.' },
     ],
     passive: { name: '연발 사격', desc: '기본 공격 한 번에 화살을 여러 발 쏜다. 레벨이 오르면 화살이 늘어난다. 더 쏜 화살은 다른 적을 노린다.' },
     weaponNoun: '장궁',
@@ -124,14 +124,14 @@ export const CLASSES: Record<ClassId, ClassDef> = {
     name: '마법사', race: '노움', color: 0x9c5bd6, r: 10, height: 32, speed: 160, aggro: 1.2,
     mainAttr: 'int',
     attrs: { str: 3, dex: 4, int: 13, vit: 5 },
-    attrGrowth: { str: 0, dex: 0, int: 2.75, vit: 0.25 },
+    attrGrowth: { str: 0.1, dex: 0.1, int: 2.65, vit: 0.25 },
     bonus: { hp: 40, atk: 6.4, def: 0.75, crit: 0.044, mp: 40, mpLv: 6, mpRegen: 1.8 },
     attack: { kind: 'projectile', cd: 0.75, mult: 1.2, speed: 340, proj: 'orb', range: 340, aoe: 70, arcHeight: 0 },
     skills: [
-      { name: '치유의 빛', cd: 14, mp: 25, unlock: 1, desc: '주변 동료를 30% 회복하고 쓰러진 동료를 일으킨다.' },
-      { name: '냉기 파동', cd: 8, mp: 20, unlock: 4, desc: '주변에 냉기를 퍼뜨려 피해를 주고 3초간 느리게 만든다.' },
-      { name: '화염구', cd: 6, mp: 30, unlock: 7, desc: '크게 폭발하는 불덩이를 던진다. 공격력 2.5배.' },
-      { name: '메테오', cd: 25, mp: 80, unlock: 10, desc: '조준한 곳에 거대한 운석을 떨어뜨린다. 공격력 5배.' },
+      { name: '치유의 빛', cd: 14, mp: 25, unlock: 3, desc: '주변 동료를 30% 회복하고 쓰러진 동료를 일으킨다.' },
+      { name: '냉기 파동', cd: 8, mp: 20, unlock: 10, desc: '주변에 냉기를 퍼뜨려 피해를 주고 3초간 느리게 만든다.' },
+      { name: '화염구', cd: 6, mp: 30, unlock: 15, desc: '크게 폭발하는 불덩이를 던진다. 공격력 2.5배.' },
+      { name: '메테오', cd: 25, mp: 80, unlock: 20, desc: '조준한 곳에 거대한 운석을 떨어뜨린다. 공격력 5배.' },
     ],
     passive: { name: '마나 순환', desc: '적을 쓰러뜨릴 때마다 최대 MP의 일부를 회복한다. 레벨이 오를수록 늘어난다.' },
     weaponNoun: '지팡이',
@@ -166,13 +166,13 @@ export const CLASS_ORDER: ClassId[] = ['swordsman', 'dwarf', 'elf', 'gnome'];
 /** 패시브 스킬 수치 (설명 글은 CLASSES.*.passive) */
 export const PASSIVE = {
   // 검사 흡혈 베기: 기본 공격 피해의 %. 1레벨 base%, everyLevels 레벨마다 +1%, 최대 max%
-  lifesteal: { base: 1, everyLevels: 5, max: 10 },
+  lifesteal: { base: 1, everyLevels: 10, max: 30 },
   // 수호자 강철 피부: 받는 피해 everyLevels 레벨마다 −1% (1레벨 0%), 최대 max%. 맞았을 때 밀려나는 거리 × knock (항상)
-  ironSkin: { everyLevels: 5, max: 10, knock: 0.5 },
+  ironSkin: { everyLevels: 10, max: 30, knock: 0.5 },
   // 궁수 연발 사격: 이 레벨들에 이를 때마다 기본 공격 화살이 1발씩 는다. spread = 짝 없는 화살의 벌어짐(라디안)
-  multiShot: { levels: [1, 5, 10], spread: 0.14 },
+  multiShot: { levels: [1, 10, 20], spread: 0.14 },
   // 마법사 마나 순환: 적을 쓰러뜨리면 최대 MP의 %. everyLevels 레벨마다 +1% (1레벨 0%), 최대 max%
-  manaFlow: { everyLevels: 5, max: 10 },
+  manaFlow: { everyLevels: 10, max: 30 },
 };
 
 /** 검사 흡혈 베기: 기본 공격 피해 중 HP로 돌아오는 비율 (0.01 = 1%) */

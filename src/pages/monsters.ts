@@ -1,7 +1,7 @@
 // 몬스터 도감 페이지 (monsters.html): 몬스터·중간보스·문지기·흑룡의 능력치와 출현 구역을 게임 데이터로 계산해 보여 준다.
 // 출현 구역과 마릿수는 지금 맵 파일(maps/world.json)에서 센다. 구역·파티 인원을 고르면 그 조건의 실제 능력치를 보여 준다.
 import './pages.css';
-import { ELITE, ELITES, ENEMIES, GATE_KEEPERS, ITEM_DROP_MULT, ZONE_NAMES, partyHpScale, zoneScale, type EnemyAI } from '../game/data';
+import { ELITE, ELITES, ENEMIES, GATE_KEEPERS, ITEM_DROP_MULT, ZONE_NAMES, partyHpScale, partyAtkScale, partyDefScale, zoneScale, type EnemyAI } from '../game/data';
 import { zoneAt, type MapFile } from '../game/mapfile';
 import worldMap from '../game/maps/world.json';
 import type { EnemyKind } from '../game/types';
@@ -36,8 +36,8 @@ function scaled(base: { hp: number; atk: number; def: number; xp: number; gold: 
   const zs = boss ? { hp: 1, atk: 1, def: 0, xp: 1 } : zoneScale(zone);
   return {
     hp: Math.round(base.hp * zs.hp * partyHpScale(party)),
-    atk: Math.round(base.atk * zs.atk),
-    def: base.def + zs.def,
+    atk: Math.round(base.atk * zs.atk * partyAtkScale(party)),
+    def: Math.round((base.def + zs.def) * partyDefScale(party)),
     xp: Math.round(base.xp * zs.xp * (elite ? ELITE.xp : 1)),
     gold: Math.round(base.gold * zs.xp * (elite ? ELITE.gold : 1)), // 돈은 ±30% 흔들린다 (평균값)
   };
@@ -88,7 +88,7 @@ function render() {
   const bs = scaled(bd, 1, party, false, true);
   $('out').innerHTML = `
     <div class="card"><h2>몬스터 (${kinds.length}종)</h2>
-      <div class="sub">기본 = 1구역 기준 값. <b class="main">노란 칸</b> = ${zname(zone)} · ${party}인 파티에서의 실제 값 (HP는 인원이 많을수록 늘어난다).
+      <div class="sub">기본 = 1구역 기준 값. <b class="main">노란 칸</b> = ${zname(zone)} · ${party}인 파티에서의 실제 값 (HP·공격·방어는 인원이 많을수록 늘어난다).
         파란 줄 = 이 구역에 나오는 몬스터. 경험치·돈도 그 구역 기준(돈은 평균). 장비 드랍 = 쓰러뜨렸을 때 장비가 나올 확률.</div>
       <div class="scroll"><table>
         <thead><tr><th>이름</th><th class="l">행동</th><th>기본 HP</th><th>기본 공격</th><th>기본 방어</th><th>속도</th>
@@ -100,7 +100,7 @@ function render() {
         <thead><tr><th>구역</th><th class="l">이름</th><th class="l">자리</th><th class="l">모양 · 행동</th><th>HP</th><th>공격</th><th>방어</th><th>경험치</th><th>돈</th></tr></thead>
         <tbody>${elites.join('') || '<tr><td colspan="9" class="muted">찾는 이름이 없습니다</td></tr>'}</tbody></table></div></div>
     ${hit(bd.name) ? `<div class="card"><h2>최종 보스: ${bd.name}</h2>
-      <div class="sub">구역 배율 없이 자기 능력치 그대로 (HP만 인원 배율). ${AI_TEXT.boss}. 체력이 절반 아래로 떨어지면 빨라지고 고블린을 불러낸다.</div>
+      <div class="sub">구역 배율 없이 자기 능력치 그대로 (HP·공격·방어에 인원 배율). ${AI_TEXT.boss}. 체력이 절반 아래로 떨어지면 빨라지고 고블린을 불러낸다.</div>
       <div class="scroll"><table><thead><tr><th>HP (${party}인)</th><th>공격</th><th>방어</th><th>속도</th></tr></thead>
         <tbody><tr><td class="main">${bs.hp.toLocaleString()}</td><td class="main">${bs.atk}</td><td class="main">${bs.def}</td><td>${bd.speed}</td></tr></tbody></table></div></div>` : ''}`;
 }

@@ -157,7 +157,7 @@ export interface Enemy extends Body {
   hp: number;
   maxHp: number;
   atk: number; // 공격력 (구역·인원수 배율이 붙은 값)
-  def: number; // 방어
+  def: number; // 방어 (구역·인원수 배율이 붙은 값)
   xp: number; // 쓰러뜨리면 주는 경험치
   hurt: number; // 피격 번쩍임
   stun: number; // 넉백·기절 중에는 AI가 멈춘다

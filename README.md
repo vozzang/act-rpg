@@ -55,7 +55,7 @@
 - **쓰러진 동료 곁에 2초간 서 있으면 부활**시킬 수 있습니다. 마법사의 치유의 빛으로도 바로 일으킬 수 있습니다.
 - **새 구역에 들어서면** 쓰러진 동료는 맨 앞 동료 곁에서 부활하고, 모두의 HP가 25%, MP가 50% 회복됩니다.
 - **모두 쓰러지면 전멸**입니다. 처음부터 다시 시작해야 합니다.
-- 참가 인원이 많을수록 적 체력이 늘어납니다(1명 늘 때마다 +70%).
+- 파티 인원이 1명 늘 때마다 적 체력은 +80%, 공격과 방어는 각각 +40% 늘어납니다.
 
 ---
 
@@ -731,7 +731,7 @@ afconvert -f m4af -d aac -b 96000 원본.wav public/sfx/이름.m4a
 | 패시브 스킬 수치 (흡혈·피해 감소·화살 수·마나 순환) | `classes.ts`: `PASSIVE` |
 | 적 능력치·행동 방식 | `enemies.ts`: `ENEMIES` (`ai`: hop·melee·ranged·heavy·dash·frost·bomb) |
 | 구역별 적 강화 배율 | `enemies.ts`: `ZONE_SCALE` (`zoneScale`) |
-| 인원수에 따른 적 체력 | `enemies.ts`: `partyHpScale` |
+| 인원수에 따른 적 체력·공격·방어 | `enemies.ts`: `partyHpScale` / `partyAtkScale` / `partyDefScale` |
 | 중간보스 / 문지기 | `enemies.ts`: `ELITES` / `GATE_KEEPERS` (보상 배율은 `ELITE`) |
 | 구역별 출현 몬스터 비율 · 벽의 바위 비율 | `src/game/level.ts`의 `ZONE_POOLS` · `ROCK_CHANCE` ※ |
 | 구역 이름 · 색 / 3D 테마 | `core.ts`: `ZONE_NAMES` · `ZONE_PALETTE` / `World3D.ts`의 `ZONE_THEMES` |

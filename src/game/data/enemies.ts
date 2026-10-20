@@ -34,7 +34,7 @@ export const ENEMIES: Record<EnemyKind, EnemyDef> = {
   orc: { name: '오크 전사', ai: 'heavy', heavy: true, knock: 0.35, r: 15, height: 56, hp: 200, atk: 20, def: 6, speed: 65, xp: 36, gold: 18, dropRate: 0.5 },
   // 흑룡: 4인이 9·10구역 상점 장비를 대장간에서 조합한 전설 장비 6개씩을 갖춰야 겨우 이기도록 맞췄다.
   // 방어가 매우 높아(한 대에 1500을 깎는다) 공격력이 낮은 장비로는 거의 피해를 주지 못한다 (봇 시험: 전설 6개 5/8 승, 전설 5+영웅 1 0/8, 그 아래 0)
-  boss: { name: '흑룡', ai: 'boss', r: 40, height: 220, hp: 100000, atk: 1000, def: 4000, speed: 75, xp: 0, gold: 0, dropRate: 1 },
+  boss: { name: '흑룡', ai: 'boss', r: 40, height: 220, hp: 100000, atk: 1200, def: 4000, speed: 75, xp: 0, gold: 0, dropRate: 1 },
   // 1구역: 작고 빠른 졸개 무리, 돌을 던지는 투척병
   hound: { name: '퍼그 졸개', ai: 'melee', r: 10, height: 30, hp: 34, atk: 8, def: 0, speed: 120, xp: 6, gold: 2, dropRate: 0.06 },
   thrower: { name: '고블린 투척병', ai: 'ranged', r: 11, height: 34, hp: 45, atk: 10, def: 1, speed: 70, xp: 13, gold: 5, dropRate: 0.12 },
@@ -86,16 +86,16 @@ export const ELITES: EliteDef[][] = [
  * 같은 구역의 중간보스보다 한 단계 강하다. 구역 보정과 인원수 보정은 중간보스와 같이 곱해진다.
  */
 export const GATE_KEEPERS: EliteDef[] = [
-  { kind: 'goblin', name: '숲의 문지기', hp: 430, atk: 17, def: 5 },
-  { kind: 'skeleton', name: '협곡의 문지기', hp: 480, atk: 20, def: 6 },
-  { kind: 'orc', name: '설원의 문지기', hp: 580, atk: 26, def: 9 },
-  { kind: 'orc', name: '요새의 문지기', hp: 650, atk: 28, def: 10 },
-  { kind: 'orc', name: '화산의 문지기', hp: 660, atk: 28, def: 11 },
-  { kind: 'zombie', name: '늪의 문지기', hp: 680, atk: 28, def: 11 },
-  { kind: 'raider', name: '사막의 문지기', hp: 690, atk: 29, def: 11 },
-  { kind: 'darkKnight', name: '수정의 문지기', hp: 700, atk: 29, def: 12 },
-  { kind: 'darkKnight', name: '묘지의 문지기', hp: 710, atk: 30, def: 12 },
-  { kind: 'flameKnight', name: '흑룡의 문지기', hp: 720, atk: 30, def: 12 }, // 보스 방 입구 (마지막 구역)
+  { kind: 'goblin', name: '숲의 문지기', hp: 430, atk: 20, def: 10 },
+  { kind: 'skeleton', name: '협곡의 문지기', hp: 480, atk: 25, def: 10 },
+  { kind: 'orc', name: '설원의 문지기', hp: 580, atk: 30, def: 15 },
+  { kind: 'orc', name: '요새의 문지기', hp: 650, atk: 30, def: 20 },
+  { kind: 'orc', name: '화산의 문지기', hp: 660, atk: 30, def: 20 },
+  { kind: 'zombie', name: '늪의 문지기', hp: 680, atk: 30, def: 20 },
+  { kind: 'raider', name: '사막의 문지기', hp: 690, atk: 30, def: 20 },
+  { kind: 'darkKnight', name: '수정의 문지기', hp: 700, atk: 30, def: 20 },
+  { kind: 'darkKnight', name: '묘지의 문지기', hp: 710, atk: 30, def: 20 },
+  { kind: 'flameKnight', name: '흑룡의 문지기', hp: 720, atk: 30, def: 50 }, // 보스 방 입구 (마지막 구역)
 ];
 
 export const ELITE = {
@@ -122,7 +122,15 @@ export function zoneScale(zone: number) {
   return { hp: ZONE_SCALE.hp[i], atk: ZONE_SCALE.atk[i], def: ZONE_SCALE.def[i], xp: 1 + 0.5 * (zone - 1) };
 }
 
-/** 인원수가 많을수록 적 체력이 늘어난다. */
+/** 파티 인원이 늘 때 적 능력치별 강화 배율. */
 export function partyHpScale(players: number) {
   return 1 + 0.8 * (players - 1);
+}
+
+export function partyAtkScale(players: number) {
+  return 1 + 0.4 * (players - 1);
+}
+
+export function partyDefScale(players: number) {
+  return 1 + 0.4 * (players - 1);
 }
