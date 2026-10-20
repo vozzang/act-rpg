@@ -138,6 +138,18 @@ export class ForgePanel {
       ...me.inv.flatMap((sl, idx) => (sl?.kind === 'item' ? [{ item: sl.item, pick: { from: 'inv' as const, idx } }] : [])),
       ...(me.bag ?? []).flatMap((it, idx) => (it ? [{ item: it, pick: { from: 'bag' as const, idx } }] : [])),
     ];
+    const recipes = recipesForZone(shop.zone);
+    const craftableItemIds = new Set<number>();
+    for (const recipe of recipes) {
+      const used = new Set<number>();
+      const complete = recipe.needs.every(({ key }) => {
+        const entry = this.entries.find((candidate) => candidate.item.key === key && !used.has(candidate.item.id));
+        if (!entry) return false;
+        used.add(entry.item.id);
+        return true;
+      });
+      if (complete) for (const id of used) craftableItemIds.add(id);
+    }
     const ids = new Set(this.entries.map((e) => e.item.id));
     for (const id of this.picked) if (!ids.has(id)) this.picked.delete(id);
     if (this.cursor >= this.entries.length) this.cursor = Math.max(0, this.entries.length - 1);
@@ -160,10 +172,14 @@ export class ForgePanel {
         return;
       }
       const on = this.picked.has(e.item.id);
+      const craftable = craftableItemIds.has(e.item.id);
+      if (craftable) g.fillStyle(0x16c991, 0.24).fillRoundedRect(X + 12, y, LIST_W - 12, ROW_H - 2, 5);
       if (on) g.fillStyle(0xffa040, 0.22).fillRoundedRect(X + 12, y, LIST_W - 12, ROW_H - 2, 5);
+      if (craftable) g.lineStyle(2, 0x73ffd2, 0.95).strokeRoundedRect(X + 12, y, LIST_W - 12, ROW_H - 2, 5);
       if (device === 'pad' && i === this.cursor) g.lineStyle(2, 0xffd040, 0.8).strokeRoundedRect(X + 12, y, LIST_W - 12, ROW_H - 2, 5);
       const where = e.pick.from === 'inv' ? '착용' : '가방';
-      r.name.setText(`${on ? '☑' : '☐'} [${where}] [${RARITY[e.item.rarity].name}] ${itemName(e.item, me.cls)}`).setColor(RARITY[e.item.rarity].color);
+      r.name.setText(`${craftable ? '◆ 조합 가능 · ' : ''}${on ? '☑' : '☐'} [${where}] [${RARITY[e.item.rarity].name}] ${itemName(e.item, me.cls)}`)
+        .setColor(craftable ? '#8affd0' : RARITY[e.item.rarity].color);
       r.stat.setText(itemStatText(e.item));
     });
 
@@ -171,7 +187,6 @@ export class ForgePanel {
     const sel = this.selected();
     const match = sel.length >= FORGE.min ? matchRecipe(sel, shop.zone) : null;
     this.recipeTitle.setText(`${shop.zone}구역 조합법 (재료 → 결과)`);
-    const recipes = recipesForZone(shop.zone);
     this.recipeRows.forEach((row, i) => {
       const rc = recipes[i];
       if (!rc) {

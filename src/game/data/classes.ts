@@ -68,7 +68,7 @@ export interface ClassDef {
 
 export const CLASSES: Record<ClassId, ClassDef> = {
   swordsman: {
-    name: '검사', race: '휴먼', color: 0x4a90e2, r: 12, height: 50, speed: 170, aggro: 1,
+    name: '검사', race: '휴먼', color: 0x4a90e2, r: 12, height: 50, speed: 150, aggro: 1,
     mainAttr: 'str',
     attrs: { str: 10, dex: 5, int: 3, vit: 7 },
     attrGrowth: { str: 1.25, dex: 0.5, int: 0.1, vit: 0.75 },
@@ -85,7 +85,7 @@ export const CLASSES: Record<ClassId, ClassDef> = {
     desc: '빠른 연속 베기. 균형 잡힌 능력치.',
   },
   dwarf: {
-    name: '수호자', race: '드워프', color: 0xd08040, r: 15, height: 40, speed: 150, aggro: 0.5,
+    name: '수호자', race: '드워프', color: 0xd08040, r: 15, height: 40, speed: 120, aggro: 0.5,
     // 수호자: 주 능력치는 체력(최대 HP·방어), 공격력은 힘으로 오른다. 포인트를 힘에 주면 공격형, 체력에 주면 탱커형
     mainAttr: 'vit',
     atkAttr: 'str',
@@ -104,7 +104,7 @@ export const CLASSES: Record<ClassId, ClassDef> = {
     desc: '튼튼한 몸과 강한 넉백. 적이 우선적으로 노린다.',
   },
   elf: {
-    name: '궁수', race: '엘프', color: 0x4caf50, r: 11, height: 56, speed: 180, aggro: 1.2,
+    name: '궁수', race: '엘프', color: 0x4caf50, r: 11, height: 56, speed: 170, aggro: 1.2,
     mainAttr: 'dex',
     attrs: { str: 4, dex: 12, int: 4, vit: 5 },
     attrGrowth: { str: 0.35, dex: 1.5, int: 0.25, vit: 0.25 }, // 연발 사격(화살 여러 발)이 있어 다른 직업보다 성장을 낮게
@@ -121,12 +121,12 @@ export const CLASSES: Record<ClassId, ClassDef> = {
     desc: '포물선을 그리며 멀리 날아가는 화살. 치명타 확률이 높다.',
   },
   gnome: {
-    name: '마법사', race: '노움', color: 0x9c5bd6, r: 10, height: 32, speed: 160, aggro: 1.2,
+    name: '마법사', race: '노움', color: 0x9c5bd6, r: 10, height: 32, speed: 150, aggro: 1.2,
     mainAttr: 'int',
     attrs: { str: 3, dex: 4, int: 13, vit: 5 },
     attrGrowth: { str: 0.1, dex: 0.1, int: 2.65, vit: 0.25 },
     bonus: { hp: 40, atk: 6.4, def: 0.75, crit: 0.044, mp: 40, mpLv: 6, mpRegen: 1.8 },
-    attack: { kind: 'projectile', cd: 0.75, mult: 1.2, speed: 340, proj: 'orb', range: 340, aoe: 70, arcHeight: 0 },
+    attack: { kind: 'projectile', cd: 0.75, mult: 1.2, speed: 340, proj: 'orb', range: 340, aoe: 70, arcHeight: 0, assist: { cone: 0.7, turn: 6 } },
     skills: [
       { name: '치유의 빛', cd: 14, mp: 25, unlock: 3, desc: '주변 동료를 30% 회복하고 쓰러진 동료를 일으킨다.' },
       { name: '냉기 파동', cd: 8, mp: 20, unlock: 10, desc: '주변에 냉기를 퍼뜨려 피해를 주고 3초간 느리게 만든다.' },

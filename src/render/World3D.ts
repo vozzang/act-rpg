@@ -1026,7 +1026,7 @@ export class World3D {
       if (ch.current !== 'die') this.play(ch, 'die', true);
       return;
     }
-    if (ch.current === 'die') ch.current = '';
+    if (ch.current === 'die') ch.oneShotUntil = 0;
     const started = p.atkAnim > 0 && p.atkAnim > ch.prevAtk + 0.01;
     ch.prevAtk = p.atkAnim;
     if (started) {

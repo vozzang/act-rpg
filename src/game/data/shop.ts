@@ -16,7 +16,7 @@ export const BAG_SIZE = 6;
 export const SHOP = {
   range: 80, // 상인과 이 거리 안에 있어야 살 수 있다
   foodPrice: 20,
-  itemPrice: { common: 25, rare: 55, epic: 110, legendary: 240 } as Record<Rarity, number>,
+  itemPrice: { common: 25, rare: 65, epic: 120, legendary: 260 } as Record<Rarity, number>,
   // 상점 장비는 필드 드랍보다 좋은 등급이 잘 나온다
   rarityWeight: { common: 30, rare: 47, epic: 21, legendary: 2 } as Record<Rarity, number>, // 중간보스·문지기 확정 드랍의 등급 확률
 };
@@ -48,5 +48,5 @@ export function shopStock(type: ShopType, zone: number, nextId: () => number): S
 
 /** 구역이 깊을수록 장비 값이 오른다 */
 export function shopItemPrice(rarity: Rarity, zone: number) {
-  return Math.round(SHOP.itemPrice[rarity] * (1 + 0.6 * (zone - 1)));
+  return Math.round(SHOP.itemPrice[rarity] * (1 + 1.8 * (zone - 1)));
 }

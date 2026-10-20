@@ -28,28 +28,28 @@ export interface EnemyDef {
 
 // 몬스터가 많은 대신 마리당 경험치·돈·장비 드랍은 낮게 잡았다 (한 판 동안 얻는 총량이 너무 커지지 않도록)
 export const ENEMIES: Record<EnemyKind, EnemyDef> = {
-  slime: { name: '슬라임', ai: 'hop', r: 13, height: 22, hp: 40, atk: 9, def: 0, speed: 50, xp: 7, gold: 3, dropRate: 0.09 },
-  goblin: { name: '고블린', ai: 'melee', r: 11, height: 36, hp: 62, atk: 13, def: 2, speed: 100, xp: 12, gold: 4, dropRate: 0.13 },
-  skeleton: { name: '해골 궁수', ai: 'ranged', r: 11, height: 46, hp: 52, atk: 11, def: 1, speed: 55, xp: 15, gold: 6, dropRate: 0.17 },
-  orc: { name: '오크 전사', ai: 'heavy', heavy: true, knock: 0.35, r: 15, height: 56, hp: 200, atk: 20, def: 6, speed: 65, xp: 36, gold: 18, dropRate: 0.5 },
+  slime: { name: '슬라임', ai: 'hop', r: 13, height: 22, hp: 40, atk: 7, def: 0, speed: 40, xp: 7, gold: 3, dropRate: 0.09 },
+  goblin: { name: '고블린', ai: 'melee', r: 11, height: 36, hp: 60, atk: 10, def: 2, speed: 90, xp: 12, gold: 4, dropRate: 0.13 },
+  skeleton: { name: '해골 궁수', ai: 'ranged', r: 11, height: 46, hp: 50, atk: 11, def: 1, speed: 45, xp: 15, gold: 6, dropRate: 0.17 },
+  orc: { name: '오크 전사', ai: 'heavy', heavy: true, knock: 0.35, r: 15, height: 56, hp: 200, atk: 20, def: 6, speed: 55, xp: 36, gold: 18, dropRate: 0.5 },
   // 흑룡: 4인이 9·10구역 상점 장비를 대장간에서 조합한 전설 장비 6개씩을 갖춰야 겨우 이기도록 맞췄다.
   // 방어가 매우 높아(한 대에 1500을 깎는다) 공격력이 낮은 장비로는 거의 피해를 주지 못한다 (봇 시험: 전설 6개 5/8 승, 전설 5+영웅 1 0/8, 그 아래 0)
   boss: { name: '흑룡', ai: 'boss', r: 40, height: 220, hp: 100000, atk: 1200, def: 4000, speed: 75, xp: 0, gold: 0, dropRate: 1 },
   // 1구역: 작고 빠른 졸개 무리, 돌을 던지는 투척병
-  hound: { name: '퍼그 졸개', ai: 'melee', r: 10, height: 30, hp: 34, atk: 8, def: 0, speed: 120, xp: 6, gold: 2, dropRate: 0.06 },
-  thrower: { name: '고블린 투척병', ai: 'ranged', r: 11, height: 34, hp: 45, atk: 10, def: 1, speed: 70, xp: 13, gold: 5, dropRate: 0.12 },
+  hound: { name: '퍼그 졸개', ai: 'melee', r: 10, height: 30, hp: 34, atk: 8, def: 0, speed: 110, xp: 6, gold: 2, dropRate: 0.06 },
+  thrower: { name: '고블린 투척병', ai: 'ranged', r: 11, height: 34, hp: 45, atk: 10, def: 1, speed: 60, xp: 13, gold: 5, dropRate: 0.12 },
   // 2구역: 튼튼한 산적, 멀리서 돌진해 베는 암살자
-  bandit: { name: '협곡 산적', ai: 'melee', r: 12, height: 44, hp: 110, atk: 15, def: 3, speed: 95, xp: 20, gold: 9, dropRate: 0.2 },
-  assassin: { name: '암살자', ai: 'dash', r: 11, height: 40, hp: 70, atk: 18, def: 2, speed: 115, xp: 22, gold: 10, dropRate: 0.2 },
+  bandit: { name: '협곡 산적', ai: 'melee', r: 12, height: 44, hp: 110, atk: 15, def: 3, speed: 85, xp: 20, gold: 9, dropRate: 0.2 },
+  assassin: { name: '암살자', ai: 'dash', r: 11, height: 40, hp: 70, atk: 18, def: 2, speed: 105, xp: 22, gold: 10, dropRate: 0.2 },
   // 3구역: 느리고 묵직한 약탈자, 냉기로 발을 묶는 마녀
-  raider: { name: '설원 약탈자', ai: 'heavy', heavy: true, knock: 0.5, r: 14, height: 48, hp: 150, atk: 18, def: 4, speed: 75, xp: 28, gold: 12, dropRate: 0.3 },
-  iceWitch: { name: '얼음 마녀', ai: 'frost', r: 11, height: 50, hp: 60, atk: 12, def: 1, speed: 60, xp: 24, gold: 12, dropRate: 0.25 },
+  raider: { name: '설원 약탈자', ai: 'heavy', heavy: true, knock: 0.5, r: 14, height: 48, hp: 140, atk: 18, def: 4, speed: 65, xp: 28, gold: 12, dropRate: 0.3 },
+  iceWitch: { name: '얼음 마녀', ai: 'frost', r: 11, height: 50, hp: 60, atk: 12, def: 1, speed: 50, xp: 24, gold: 12, dropRate: 0.25 },
   // 4구역: 방어가 높은 흑기사, 느리지만 질긴 망자 무리
-  darkKnight: { name: '흑기사', ai: 'heavy', heavy: true, knock: 0.3, r: 14, height: 50, hp: 170, atk: 19, def: 9, speed: 70, xp: 34, gold: 16, dropRate: 0.4 },
-  zombie: { name: '망자 병사', ai: 'melee', knock: 0.6, r: 12, height: 40, hp: 120, atk: 14, def: 2, speed: 48, xp: 18, gold: 6, dropRate: 0.15 },
+  darkKnight: { name: '흑기사', ai: 'heavy', heavy: true, knock: 0.3, r: 14, height: 50, hp: 160, atk: 19, def: 9, speed: 60, xp: 34, gold: 16, dropRate: 0.4 },
+  zombie: { name: '망자 병사', ai: 'melee', knock: 0.6, r: 12, height: 40, hp: 120, atk: 14, def: 2, speed: 40, xp: 18, gold: 6, dropRate: 0.15 },
   // 5구역: 강한 불꽃 기사, 발밑에 화염탄을 떨어뜨리는 술사
-  flameKnight: { name: '불꽃 기사', ai: 'heavy', heavy: true, knock: 0.3, r: 14, height: 50, hp: 200, atk: 22, def: 7, speed: 80, xp: 40, gold: 20, dropRate: 0.45 },
-  pyromancer: { name: '화염 술사', ai: 'bomb', r: 11, height: 50, hp: 70, atk: 16, def: 2, speed: 60, xp: 30, gold: 16, dropRate: 0.3 },
+  flameKnight: { name: '불꽃 기사', ai: 'heavy', heavy: true, knock: 0.3, r: 14, height: 50, hp: 200, atk: 22, def: 7, speed: 70, xp: 40, gold: 20, dropRate: 0.45 },
+  pyromancer: { name: '화염 술사', ai: 'bomb', r: 11, height: 50, hp: 70, atk: 16, def: 2, speed: 50, xp: 30, gold: 16, dropRate: 0.3 },
 };
 
 /** 적이 플레이어를 알아차리는 거리 */
@@ -128,9 +128,9 @@ export function partyHpScale(players: number) {
 }
 
 export function partyAtkScale(players: number) {
-  return 1 + 0.4 * (players - 1);
+  return 1 + 0.2 * (players - 1);
 }
 
 export function partyDefScale(players: number) {
-  return 1 + 0.4 * (players - 1);
+  return 1 + 0.3 * (players - 1);
 }

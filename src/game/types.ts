@@ -203,7 +203,7 @@ export interface Projectile {
   aoe: number; // 폭발 반지름 (0이면 터지지 않는다)
   pierce: boolean; // 적을 뚫고 지나가는지
   hitIds: number[]; // 관통 투사체가 이미 맞힌 적
-  homing?: number; // 따라가는 적 id (자동 조준된 궁수 기본 공격)
+  homing?: number; // 따라가는 적 id (자동 조준된 궁수·마법사 기본 공격)
   look?: 'frost' | 'burn'; // 겉모습: frost = 서리바람 활 궁수의 화살 (얼음빛), burn = 업화의 지팡이 마법사의 구체 (불덩이)
   turn?: number; // 따라갈 때 초당 최대로 꺾이는 각도 (라디안)
 }
