@@ -620,15 +620,16 @@ src/
 | `mini/forest/` | Mini Forest | 궁수, 활, 나무, 바위, 풀, 야영지(텐트·깃발·과녁) |
 | `mini/dungeon/` | Mini Dungeon | 기사(검사), 오크(고블린·오크·보스), 무기·방패, 구역 경계 벽, 상자(장비), 통, 금화 |
 | `mini/arena/` | Mini Arena | 병사(수호자·해골 궁수), 보스 방 바닥·기둥·석상 |
-| `mini/characters/` | Mini Characters | 학자(마법사), 상인 |
+| `mini/characters/` | Mini Characters | 마을 학자, 상인 |
 | `dragon/` | [Cethiel's Dragon 3D](https://opengameart.org/content/cethiels-dragon-3d) (OpenGameArt, Drummyfish) | 최종 보스 흑룡 (Collada 모델 + 대기·걷기·공격·죽기 애니메이션) |
 | `food/` | Food Kit | 회복 음식 (HP: 햄·사과, MP: 포도·포도주) |
 | `town/` | Fantasy Town Kit | 상점 가판대, 수레, 가로등 |
 | `castle/` | Castle Kit | 구역 출구의 철문, 망루 / 10구역 마왕성: 성벽, 망루, 깃발 |
 | `holiday/` | Holiday Kit | 3구역 설원: 눈 덮인 나무·바위, 눈사람, 눈 무더기 |
 | `td/` | Tower Defense Kit | 3구역 설원: 작은 눈 나무, 얼음 결정, 눈 자갈 / 8구역 수정 동굴: 수정 덩어리 |
+| `ranger/`, `wizard/`, `warrior/`, `cleric/` | RPG Characters (Quaternius, CC0) | 엘프 Ranger, 마법사 Wizard, 검사 Warrior, 드워프 수호자 Cleric 캐릭터 (FBX·Blend를 GLB로 변환, 텍스처·애니메이션 포함) |
 | `uacp/` | [Ultimate Animated Character Pack](https://quaternius.com) (Quaternius, CC0) | 구역별 몬스터 (고블린, 퍼그 졸개, 투척병, 산적, 암살자, 약탈자, 얼음 마녀, 흑기사, 망자, 불꽃 기사, 화염 술사)와 중간보스·문지기 (엘프, 바이킹, 사막 닌자, 황금 기사) |
-| `longsword/` | [Long Sword](https://opengameart.org/content/long-sword) by **WeaponGuy** ([CC BY 3.0](https://creativecommons.org/licenses/by/3.0/)) | 검사가 드는 장검 (GLB로 변환, 색·두께 수정) |
+| `longsword/` | [Long Sword](https://opengameart.org/content/long-sword) by **WeaponGuy** ([CC BY 3.0](https://creativecommons.org/licenses/by/3.0/)) | 별도 장검 모델 (검사 Warrior는 원본에 포함된 검 사용) |
 | `survival/` | Survival Kit | 맵 편집기 장식 (단풍나무, 통나무, 그루터기, 천막, 모닥불, 침낭, 표지판, 작업대, 상자, 울타리, 목책) |
 | `axe/` | Axe (CC0) | 수호자가 드는 도끼 |
 | `staff/` | Staff (CC0) | 마법사가 드는 지팡이 (끝에 보라 구슬) |
@@ -640,7 +641,7 @@ src/
 | `sfx/` | RPG Sound Pack · Kenney RPG Sounds · SoundPack01 (CC0) | 효과음 45개 (AAC .m4a로 변환. 자세한 출처는 `sfx/License.txt`) |
 | `goblin/` | Goblin (Čestmír Dammer, [Kelgar](http://www.kelgar.org) 프로젝트, CC0) | 첫 번째 문지기 "숲의 문지기" (Blender 파일을 GLB로 바꿈: 대기·걷기·달리기·공격·죽기) |
 
-캐릭터 모델은 모두 같은 뼈대를 써서 애니메이션(대기, 걷기, 공격, 활쏘기, 죽기 등)을 공유합니다.
+대부분의 캐릭터 모델은 같은 뼈대를 씁니다. 다른 뼈대를 쓰는 모델은 `PLAYER_LOOKS`·`ENEMY_LOOKS`의 `anims`에서 게임 동작 이름과 모델 애니메이션을 연결합니다.
 직업·몬스터별로 어떤 모델을 어떤 크기·색으로 쓸지는 `World3D.ts`의 `PLAYER_LOOKS`, `ENEMY_LOOKS`에서 바꿀 수 있습니다.
 
 ### 3D 모델 추가·교체

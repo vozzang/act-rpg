@@ -66,7 +66,7 @@ const MODELS = {
   ham: 'food/whole-ham', apple: 'food/apple', grapes: 'food/grapes', wine: 'food/wine-red',
 } as const;
 /** 'dragon'(최종 보스)은 Collada 파일이라 따로 불러온다 (loadDragon). 'goblinKeeper'(첫 문지기)도 크기를 맞춰야 해서 따로 (loadGoblin) */
-type ModelKey = keyof typeof MODELS | 'dragon' | 'goblinKeeper' | UacpKey | 'slime' | 'slimePurple' | 'outlaw';
+type ModelKey = keyof typeof MODELS | 'dragon' | 'goblinKeeper' | UacpKey | 'slime' | 'slimePurple' | 'outlaw' | 'ranger' | 'wizard' | 'warrior' | 'cleric';
 
 /**
  * Quaternius "Ultimate Animated Character Pack" (CC0) 캐릭터: 구역별 몬스터. 키가 약 3.1이라 불러올 때 Kenney 캐릭터 키로 줄인다.
@@ -84,6 +84,30 @@ type UacpKey = keyof typeof UACP;
 const UACP_ANIMS = {
   idle: 'Idle', walk: 'Walk', sprint: 'Walk', jump: 'Walk', die: 'Defeat',
   'attack-melee-right': 'Punch', 'holding-left-shoot': 'Shoot_OneHanded', 'holding-right': 'RecieveHit',
+};
+/** Quaternius Ranger 동작 이름을 게임에서 사용하는 캐릭터 동작에 연결한다. */
+const RANGER_ANIMS = {
+  idle: 'idle', walk: 'walk', sprint: 'run', jump: 'run', die: 'death',
+  'attack-melee-right': 'punch', 'holding-left-shoot': 'bow-attack-shoot',
+  'holding-right': 'receive-hit', hurt: 'receive-hit',
+};
+/** Quaternius Wizard 동작 이름을 게임에서 사용하는 캐릭터 동작에 연결한다. */
+const WIZARD_ANIMS = {
+  idle: 'idle', walk: 'walk', sprint: 'run-weapon', jump: 'run-weapon', die: 'death',
+  'attack-melee-right': 'staff-attack', 'holding-left-shoot': 'spell1',
+  'holding-right': 'receive-hit', hurt: 'receive-hit',
+};
+/** Quaternius Warrior 동작 이름을 게임에서 사용하는 캐릭터 동작에 연결한다. */
+const WARRIOR_ANIMS = {
+  idle: 'idle-weapon', walk: 'walk', sprint: 'run-weapon', jump: 'run-weapon', die: 'death',
+  'attack-melee-right': 'sword-attack', 'holding-left-shoot': 'sword-attack',
+  'holding-right': 'receive-hit', hurt: 'receive-hit',
+};
+/** Quaternius Cleric 동작 이름을 게임에서 사용하는 캐릭터 동작에 연결한다. */
+const CLERIC_ANIMS = {
+  idle: 'idle-weapon', walk: 'walk', sprint: 'run-weapon', jump: 'run-weapon', die: 'death',
+  'attack-melee-right': 'staff-attack', 'holding-left-shoot': 'staff-attack',
+  'holding-right': 'receive-hit', hurt: 'receive-hit',
 };
 /** 불러온 3D 모델: 장면(복제해서 쓴다)과 애니메이션 클립 */
 type Model = {
@@ -169,6 +193,7 @@ type Look = {
     glowTip?: number; // 무기 끝에 빛나는 구슬 (지팡이)
     glowSize?: number; // 구슬 반지름 (무기 모델 단위, 기본 0.07)
   }[];
+  hideMeshes?: string[]; // 특정 장비 외형에서 모델에 포함된 메시를 숨긴다
   attack: string; // 공격 애니메이션
   /** 게임이 쓰는 애니메이션 이름 → 이 모델의 클립 이름 (Kenney 캐릭터가 아닌 모델용) */
   anims?: Record<string, string>;
@@ -179,16 +204,25 @@ const BOW = { model: 'bow' as const, bone: 'arm-left', pos: [0.03, -0.16, 0.1] a
 const SPEAR = { model: 'spear' as const, bone: 'arm-right', pos: [-0.02, -0.2, 0.06] as [number, number, number], rot: [0.2, 0, 0] as [number, number, number], scale: 0.9 };
 
 const PLAYER_LOOKS: Record<ClassId, Look> = {
-  swordsman: { model: 'human', scale: [1, 1, 1], weapons: [{ ...SWORD, model: 'longsword', pos: [-0.02, -0.12, 0.05], scale: 1 }, SHIELD], attack: 'attack-melee-right' },
-  dwarf: { model: 'soldier', scale: [1.15, 0.85, 1.15], tint: 0xffd0a0, weapons: [{ ...SWORD, model: 'axe', pos: [-0.02, -0.14, 0.05], rot: [0.5, Math.PI / 2, 0], scale: 1.15 }, { ...SHIELD, model: 'shieldRect' }], attack: 'attack-melee-right' },
-  elf: { model: 'archer', scale: [0.95, 1.08, 0.95], weapons: [BOW], attack: 'holding-left-shoot' },
-  // 흰 가운에 안경을 쓴 학자 모습 + 끝에 보라 구슬이 빛나는 지팡이
-  gnome: { model: 'sage', scale: [0.85, 0.78, 0.85], weapons: [{ ...SPEAR, model: 'staff', pos: [-0.02, -0.14, 0.05], rot: [0.5, 0, 0.25], scale: 1.4, glowTip: 0xb070ff, glowSize: 0.043 }], attack: 'attack-melee-right' },
+  // RPG Characters의 Warrior 모델은 장검이 포함되어 있다.
+  swordsman: { model: 'warrior', scale: [1.3, 1.3, 1.3], attack: 'attack-melee-right', anims: WARRIOR_ANIMS },
+  // Cleric의 수염·어깨 장식에 도끼와 방패를 장착해 드워프 수호자로 사용한다.
+  dwarf: {
+    model: 'cleric', scale: [1.15, 0.82, 1.15], hideMeshes: ['Cleric_Staff'], anims: CLERIC_ANIMS,
+    weapons: [
+      { ...SWORD, model: 'axe', bone: 'WeaponR', pos: [0, 0, 0], rot: [0, 0, 0], scale: 2.5 },
+      { ...SHIELD, bone: 'FistL', model: 'shieldRect', scale: 2.9 },
+    ],
+    attack: 'attack-melee-right',
+  },
+  elf: { model: 'ranger', scale: [1.3, 1.3, 1.3], attack: 'holding-left-shoot', anims: RANGER_ANIMS },
+  // RPG Characters의 Wizard 모델은 지팡이가 포함되어 있다.
+  gnome: { model: 'wizard', scale: [1.3, 1.3, 1.3], attack: 'holding-left-shoot', anims: WIZARD_ANIMS },
 };
 /** 유니크 무기를 끼면 손에 든 무기 모양이 바뀐다: [직업][효과] → 그 직업의 겉모습 (없으면 PLAYER_LOOKS 그대로) */
 const UNIQUE_LOOKS: Partial<Record<ClassId, Partial<Record<WeaponEffect, Look>>>> = {
   // 궁수 + 서리바람 활: 파란 수정이 빛나는 은빛 활
-  elf: { frost: { ...PLAYER_LOOKS.elf, weapons: [{ model: 'frostBow', bone: 'arm-left', pos: [0.03, 0.16, 0.12], rot: [0, 0, 0], scale: 1.6 }] } },
+  elf: { frost: { ...PLAYER_LOOKS.elf, hideMeshes: ['Ranger_Bow'], weapons: [{ model: 'frostBow', bone: 'WeaponR', pos: [-0.021, 0.269, -0.022], rot: [-1.932, -1.571, 2.799], scale: 3.92 }] } },
 };
 function playerLook(p: Player): Look {
   return (p.weaponFx && UNIQUE_LOOKS[p.cls]?.[p.weaponFx]) || PLAYER_LOOKS[p.cls];
@@ -388,6 +422,10 @@ export class World3D {
       }),
       this.loadDragon(),
       this.loadGoblin(loader),
+      this.loadRanger(loader),
+      this.loadWizard(loader),
+      this.loadWarrior(loader),
+      this.loadCleric(loader),
       ...(Object.keys(UACP) as UacpKey[]).map((k) => this.loadUacp(loader, k)),
       this.loadSlime(loader, 'slime', 'slime'),
       this.loadSlime(loader, 'slimePurple', 'slime_purple'),
@@ -454,6 +492,98 @@ export class World3D {
     const root = new THREE.Group();
     root.add(body);
     this.models.set('goblinKeeper', { scene: root, animations: g.animations });
+  }
+
+  /** Quaternius Ranger (CC0). FBX 원본 키 약 3.76을 플레이어 캐릭터 크기에 맞추고 활쏘기 동작을 보존한다. */
+  private async loadRanger(loader: GLTFLoader) {
+    const g = await loader.loadAsync(`${BASE}characters/ranger.glb`);
+    g.scene.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      mesh.castShadow = true;
+      mesh.frustumCulled = false;
+      const material = mesh.material as THREE.MeshStandardMaterial;
+      if (material.map) {
+        material.emissive.set(0xffffff);
+        material.emissiveMap = material.map;
+        material.emissiveIntensity = 1.2;
+      }
+    });
+    const body = new THREE.Group();
+    body.scale.setScalar(0.85 / 3.763);
+    body.add(g.scene);
+    const root = new THREE.Group();
+    root.add(body);
+    this.models.set('ranger', { scene: root, animations: g.animations });
+  }
+
+  /** Quaternius Wizard (CC0). 원본 키 약 3.92를 플레이어 크기에 맞춘다. */
+  private async loadWizard(loader: GLTFLoader) {
+    const g = await loader.loadAsync(`${BASE}characters/wizard.glb`);
+    g.scene.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      mesh.castShadow = true;
+      mesh.frustumCulled = false;
+      const material = mesh.material as THREE.MeshStandardMaterial;
+      if (material.map) {
+        material.emissive.set(0xffffff);
+        material.emissiveMap = material.map;
+        material.emissiveIntensity = 1.2;
+      }
+    });
+    const body = new THREE.Group();
+    body.scale.setScalar(0.85 / 3.916);
+    body.add(g.scene);
+    const root = new THREE.Group();
+    root.add(body);
+    this.models.set('wizard', { scene: root, animations: g.animations });
+  }
+
+  /** Quaternius Warrior (CC0). 원본 키 약 3.92를 플레이어 크기에 맞춘다. */
+  private async loadWarrior(loader: GLTFLoader) {
+    const g = await loader.loadAsync(`${BASE}characters/warrior.glb`);
+    g.scene.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      mesh.castShadow = true;
+      mesh.frustumCulled = false;
+      const material = mesh.material as THREE.MeshStandardMaterial;
+      if (material.map) {
+        material.emissive.set(0xffffff);
+        material.emissiveMap = material.map;
+        material.emissiveIntensity = 1.2;
+      }
+    });
+    const body = new THREE.Group();
+    body.scale.setScalar(0.85 / 3.916);
+    body.add(g.scene);
+    const root = new THREE.Group();
+    root.add(body);
+    this.models.set('warrior', { scene: root, animations: g.animations });
+  }
+
+  /** Quaternius Cleric (CC0). 원본 키 약 2.91을 플레이어 크기에 맞춘다. */
+  private async loadCleric(loader: GLTFLoader) {
+    const g = await loader.loadAsync(`${BASE}characters/cleric.glb`);
+    g.scene.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      mesh.castShadow = true;
+      mesh.frustumCulled = false;
+      const material = mesh.material as THREE.MeshStandardMaterial;
+      if (material.map) {
+        material.emissive.set(0xffffff);
+        material.emissiveMap = material.map;
+        material.emissiveIntensity = 1.2;
+      }
+    });
+    const body = new THREE.Group();
+    body.scale.setScalar(0.85 / 2.911);
+    body.add(g.scene);
+    const root = new THREE.Group();
+    root.add(body);
+    this.models.set('cleric', { scene: root, animations: g.animations });
   }
 
   /** 슬라임 모델 (원본이 커서 지름 0.7칸 정도로 줄인다. 뼈대 배율 때문에 정점 크기보다 크게 그려져 실제 화면을 보고 맞춘 값) */
@@ -883,6 +1013,7 @@ export class World3D {
     root.scale.set(look.scale[0] * CHAR_SCALE, look.scale[1] * CHAR_SCALE, look.scale[2] * CHAR_SCALE);
     const materials: THREE.MeshStandardMaterial[] = [];
     root.traverse((o) => {
+      if (look.hideMeshes?.includes(o.name)) o.visible = false;
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh) return;
       const mat = (mesh.material as THREE.MeshStandardMaterial).clone();
