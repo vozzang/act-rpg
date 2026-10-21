@@ -66,7 +66,7 @@ const MODELS = {
   ham: 'food/whole-ham', apple: 'food/apple', grapes: 'food/grapes', wine: 'food/wine-red',
 } as const;
 /** 'dragon'(최종 보스)은 Collada 파일이라 따로 불러온다 (loadDragon). 'goblinKeeper'(첫 문지기)도 크기를 맞춰야 해서 따로 (loadGoblin) */
-type ModelKey = keyof typeof MODELS | 'dragon' | 'goblinKeeper' | UacpKey | 'slime' | 'slimePurple' | 'outlaw' | 'ranger' | 'wizard' | 'warrior' | 'cleric';
+type ModelKey = keyof typeof MODELS | 'dragon' | 'goblinKeeper' | UacpKey | 'slime' | 'slimePurple' | 'outlaw' | 'ranger' | 'rogue' | 'wizard' | 'warrior' | 'cleric';
 
 /**
  * Quaternius "Ultimate Animated Character Pack" (CC0) 캐릭터: 구역별 몬스터. 키가 약 3.1이라 불러올 때 Kenney 캐릭터 키로 줄인다.
@@ -102,6 +102,12 @@ const WARRIOR_ANIMS = {
   idle: 'idle-weapon', walk: 'walk', sprint: 'run-weapon', jump: 'run-weapon', die: 'death',
   'attack-melee-right': 'sword-attack', 'holding-left-shoot': 'sword-attack',
   'holding-right': 'receive-hit', hurt: 'receive-hit',
+};
+/** Quaternius Rogue 동작 이름을 게임에서 사용하는 캐릭터 동작에 연결한다. */
+const ROGUE_ANIMS = {
+  idle: 'Idle', walk: 'Walk', sprint: 'Run', jump: 'Run', die: 'Death',
+  'attack-melee-right': 'Dagger_Attack',
+  'holding-right': 'RecieveHit', hurt: 'RecieveHit',
 };
 /** Quaternius Cleric 동작 이름을 게임에서 사용하는 캐릭터 동작에 연결한다. */
 const CLERIC_ANIMS = {
@@ -216,6 +222,7 @@ const PLAYER_LOOKS: Record<ClassId, Look> = {
     attack: 'attack-melee-right',
   },
   elf: { model: 'ranger', scale: [1.3, 1.3, 1.3], attack: 'holding-left-shoot', anims: RANGER_ANIMS },
+  rogue: { model: 'rogue', scale: [1.3, 1.3, 1.3], attack: 'attack-melee-right', anims: ROGUE_ANIMS },
   // RPG Characters의 Wizard 모델은 지팡이가 포함되어 있다.
   gnome: { model: 'wizard', scale: [1.3, 1.3, 1.3], attack: 'holding-left-shoot', anims: WIZARD_ANIMS },
 };
@@ -423,6 +430,7 @@ export class World3D {
       this.loadDragon(),
       this.loadGoblin(loader),
       this.loadRanger(loader),
+      this.loadRogue(loader),
       this.loadWizard(loader),
       this.loadWarrior(loader),
       this.loadCleric(loader),
@@ -515,6 +523,29 @@ export class World3D {
     const root = new THREE.Group();
     root.add(body);
     this.models.set('ranger', { scene: root, animations: g.animations });
+  }
+
+  /** Quaternius Rogue (CC0). Rogue_Dagger는 모델에 포함되어 있으며 원본 키는 Ranger와 같다. */
+  private async loadRogue(loader: GLTFLoader) {
+    const g = await loader.loadAsync(`${BASE}characters/rogue.glb`);
+    g.scene.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      mesh.castShadow = true;
+      mesh.frustumCulled = false;
+      const material = mesh.material as THREE.MeshStandardMaterial;
+      if (material.map) {
+        material.emissive.set(0xffffff);
+        material.emissiveMap = material.map;
+        material.emissiveIntensity = 1.2;
+      }
+    });
+    const body = new THREE.Group();
+    body.scale.setScalar(0.85 / 3.763);
+    body.add(g.scene);
+    const root = new THREE.Group();
+    root.add(body);
+    this.models.set('rogue', { scene: root, animations: g.animations });
   }
 
   /** Quaternius Wizard (CC0). 원본 키 약 3.92를 플레이어 크기에 맞춘다. */

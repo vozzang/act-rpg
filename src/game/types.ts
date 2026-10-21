@@ -1,8 +1,8 @@
 // 게임 상태 타입. 호스트의 시뮬레이션과 네트워크 스냅샷이 같은 타입을 공유한다.
 // 좌표는 모두 "월드 좌표"(위에서 내려다본 평면, px)다. 3D 변환은 렌더러(World3D)만 한다.
 
-/** 직업: 검사(휴먼) · 수호자(드워프) · 궁수(엘프) · 마법사(노움) */
-export type ClassId = 'swordsman' | 'dwarf' | 'elf' | 'gnome';
+/** 직업: 검사(휴먼) · 수호자(드워프) · 궁수(엘프) · 로그(휴먼) · 마법사(노움) */
+export type ClassId = 'swordsman' | 'dwarf' | 'elf' | 'rogue' | 'gnome';
 
 /** 몬스터 종류. 능력치·행동 방식은 data/enemies.ts의 ENEMIES */
 export type EnemyKind =

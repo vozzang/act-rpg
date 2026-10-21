@@ -490,6 +490,31 @@ export class SkillFx {
         break;
       }
 
+      case 'rogue.0':
+        this.ring(x, z, 0.25, 1.5, 0xff80a0, 0.25);
+        this.burst(x, 0.4, z, 18, 4, 0xff90b0, 0.12, 0.3);
+        break;
+      case 'rogue.1':
+      case 'rogue.3': {
+        const radius = (idx === 1 ? SKILL.flurry.radius : SKILL.shadowDance.radius) * U;
+        const color = idx === 1 ? 0xffc0d0 : 0xff5078;
+        this.ring(x, z, 0.35, radius * 1.8, color, 0.3);
+        for (let i = 0; i < (idx === 1 ? 18 : 32); i++) {
+          const a = aim + rand(-1.2, 1.2), sp = rand(2, 5);
+          this.glow.emit(x + Math.cos(a) * 0.3, rand(0.25, 0.8), z + Math.sin(a) * 0.3, Math.cos(a) * sp, rand(-0.2, 0.8), Math.sin(a) * sp, rand(0.2, 0.4), color, 0.13);
+        }
+        break;
+      }
+      case 'rogue.2': {
+        const r = SKILL.poisonSmoke.radius * U;
+        this.ring(x, z, 0.2, r * 2, 0x79d66f, 0.45);
+        for (let i = 0; i < 18; i++) {
+          const a = rand(0, Math.PI * 2), d = rand(0.1, r * 0.7);
+          this.smoke.emit(x + Math.cos(a) * d, rand(0.15, 0.6), z + Math.sin(a) * d, Math.cos(a) * 0.35, rand(0.2, 0.8), Math.sin(a) * 0.35, rand(0.6, 1), 0x4c9b58, rand(0.25, 0.45), { grow: 1.2 });
+        }
+        break;
+      }
+
       case 'gnome.0': { // 치유의 빛: 초록 마법진과 동료마다 빛기둥, 떠오르는 빛가루
         this.decal(x, z, SKILL.heal.radius * U * 2, this.tex.magic, 0x70ff90, 1.2, { additive: true, spin: 1, opacity: 0.7 });
         for (const p of allies(SKILL.heal.radius)) {
@@ -791,10 +816,12 @@ export class SkillFx {
         ch.visible = true;
         if (Math.random() < dt * 10) this.glow.emit(x + rand(-0.3, 0.3), rand(0.2, 0.9), z + rand(-0.3, 0.3), 0, rand(0.1, 0.4), 0, rand(0.5, 0.8), 0xdff6ff, 0.1);
       } else if (ch) ch.visible = false;
-      // 돌진 중 잔상: 검사는 푸른 바람, 수호자는 흙먼지
+      // 돌진 중 잔상: 검사는 푸른 바람, 로그는 분홍 섬광, 수호자는 흙먼지
       if (p.dashTime > 0 && !p.dead) {
         if (p.cls === 'dwarf') {
           if (Math.random() < dt * 40) this.smoke.emit(x + rand(-0.2, 0.2), 0.1, z + rand(-0.2, 0.2), rand(-0.5, 0.5), rand(0.2, 0.6), rand(-0.5, 0.5), 0.6, 0xa89070, 0.45, { grow: 1.2 });
+        } else if (p.cls === 'rogue') {
+          for (let i = 0; i < 3; i++) this.glow.emit(x + rand(-0.15, 0.15), rand(0.2, 0.8), z + rand(-0.15, 0.15), 0, 0, 0, 0.25, 0xff80a0, rand(0.18, 0.3));
         } else for (let i = 0; i < 3; i++) this.glow.emit(x + rand(-0.15, 0.15), rand(0.2, 0.8), z + rand(-0.15, 0.15), 0, 0, 0, 0.25, 0xbfe6ff, rand(0.18, 0.3));
       }
     }

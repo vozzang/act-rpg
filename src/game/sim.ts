@@ -1,7 +1,7 @@
 // 게임 시뮬레이션. 호스트에서만 실행되고, 클라이언트는 스냅샷을 받아 그리기만 한다.
 import {
   AGGRO_RANGE, BAG_SIZE, FORGE, ITEM_DROP_MULT, TICK_RATE, ATTR_EFFECT, ATTR_KEYS, CLASSES, ELITE, ELITES, ENEMIES, GATE_KEEPERS, FOOD, INV_SIZE, POINTS_PER_LEVEL, REVIVE_TIME, SHOP, SKILL, TILE, ZONE_NAMES,
-  deriveStats, makeItem, partyHpScale, partyAtkScale, partyDefScale, skillMpCost, canEquip, DUNGEONS, type DungeonDef, ITEM_LIST, UNIQUE_DROP, WEAPON_EFFECTS, itemFromDef, PASSIVE, arrowCount, ironSkinRate, lifestealRate, manaFlowRate, type EliteDef, shopStock, matchRecipe, recipeItem, recipeName, randomForgeRarity, totalAttrs, xpForLevel, zoneScale, type AttackDef,
+  deriveStats, makeItem, partyHpScale, partyAtkScale, partyDefScale, skillMpCost, canEquip, DUNGEONS, type DungeonDef, ITEM_LIST, UNIQUE_DROP, WEAPON_EFFECTS, itemFromDef, PASSIVE, arrowCount, ironSkinRate, lifestealRate, manaFlowRate, rogueCritMultiplier, type EliteDef, shopStock, matchRecipe, recipeItem, recipeName, randomForgeRarity, totalAttrs, xpForLevel, zoneScale, type AttackDef,
 } from './data';
 import { blockedAt, dungeonExit, mulberry32, openGate, zoneOfTx, type DungeonArena, type Level } from './level';
 import { gameLevel } from './world';
@@ -354,7 +354,7 @@ export class Sim {
     let v = p.stats.atk * mult * (0.9 + this.rng() * 0.2);
     if (p.atkBuff > 0) v *= 1 + SKILL.warcry.atk;
     const crit = this.rng() < p.stats.crit;
-    if (crit) v *= 1.6;
+    if (crit) v *= p.cls === 'rogue' ? rogueCritMultiplier(p.level) : 1.6;
     return { v, crit };
   }
 
@@ -622,6 +622,38 @@ export class Sim {
         break;
       }
 
+      // ── 로그 ──
+      case 'rogue.0':
+        this.startDash(p, 0, SKILL.ambush.time);
+        ev(0);
+        break;
+      case 'rogue.1': {
+        const f = SKILL.flurry;
+        p.atkAnim = 0.25;
+        this.meleeArc(p, f.radius, f.arc, f.mult, f.knock, 0);
+        ev(0);
+        break;
+      }
+      case 'rogue.2': {
+        const s = SKILL.poisonSmoke;
+        p.atkAnim = 0.3;
+        for (const e of this.enemies) {
+          if (!e.active || e.hp <= 0 || dist(p.x, p.y, e.x, e.y) - e.r > s.radius) continue;
+          e.slow = Math.max(e.slow, e.kind === 'boss' ? s.slow / 2 : s.slow);
+          const d = this.rollDamage(p, s.mult);
+          this.hitEnemy(e, d.v, d.crit, 0, 0, p);
+        }
+        ev(s.radius);
+        break;
+      }
+      case 'rogue.3': {
+        const s = SKILL.shadowDance;
+        p.atkAnim = 0.35;
+        this.meleeArc(p, s.radius, s.arc, s.mult, s.knock, 0);
+        ev(0);
+        break;
+      }
+
       // ── 마법사 ──
       case 'gnome.0': {
         const { radius } = SKILL.heal;
@@ -693,7 +725,8 @@ export class Sim {
   /** 돌진(돌진 베기·방패 돌진): 조준 방향으로 미끄러지며 닿는 적을 한 번씩 친다. */
   private updateDash(p: Player, dt: number) {
     const shield = p.cls === 'dwarf';
-    const speed = shield ? SKILL.bash.speed : SKILL.dash.speed;
+    const rogue = p.cls === 'rogue';
+    const speed = shield ? SKILL.bash.speed : rogue ? SKILL.ambush.speed : SKILL.dash.speed;
     p.dashTime -= dt;
     p.vx = Math.cos(p.aim) * speed;
     p.vy = Math.sin(p.aim) * speed;
@@ -703,8 +736,9 @@ export class Sim {
       if (!e.active || e.hp <= 0 || p.dashHits.includes(e.id)) continue;
       if (dist(p.x, p.y, e.x, e.y) < p.r + e.r + 14) {
         p.dashHits.push(e.id);
-        const d = this.rollDamage(p, shield ? SKILL.bash.mult : SKILL.dash.mult);
-        const knock = shield ? SKILL.bash.knock : 260;
+        const mult = shield ? SKILL.bash.mult : rogue ? SKILL.ambush.mult : SKILL.dash.mult;
+        const knock = shield ? SKILL.bash.knock : rogue ? SKILL.ambush.knock : 260;
+        const d = this.rollDamage(p, mult);
         this.hitEnemy(e, d.v, d.crit, Math.cos(p.aim) * knock, Math.sin(p.aim) * knock, p, shield ? SKILL.bash.stun : 0);
       }
     }

@@ -29,7 +29,7 @@ export const CDR_MAX = 1;
 
 export const ATTR_DESC: Record<AttrKey, string> = {
   str: '검사·수호자 공격력, 방어',
-  dex: '원거리 공격력, 치명타, 공격 속도, 회피',
+  dex: '궁수·로그 공격력, 치명타, 공격 속도, 회피',
   int: '마법 공격력, MP, 스킬 재사용, 회복량',
   vit: '최대 HP, 방어',
 };

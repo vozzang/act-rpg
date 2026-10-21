@@ -47,7 +47,7 @@ export const SKILL_UNLOCKS = [3, 10, 15, 20];
 
 /** 직업 하나의 모든 설정 */
 export interface ClassDef {
-  name: string; // 직업 이름 (검사·수호자·궁수·마법사)
+  name: string; // 직업 이름
   race: string; // 종족 (휴먼·드워프·엘프·노움)
   color: number; // 파티 패널·지도 점 색
   r: number; // 충돌 반지름
@@ -120,6 +120,23 @@ export const CLASSES: Record<ClassId, ClassDef> = {
     weaponNoun: '장궁',
     desc: '포물선을 그리며 멀리 날아가는 화살. 치명타 확률이 높다.',
   },
+  rogue: {
+    name: '로그', race: '휴먼', color: 0xd35b75, r: 10, height: 48, speed: 180, aggro: 1.15,
+    mainAttr: 'dex',
+    attrs: { str: 5, dex: 14, int: 3, vit: 5 },
+    attrGrowth: { str: 0.4, dex: 1.45, int: 0.15, vit: 0.35 },
+    bonus: { hp: 42, atk: 4, def: 1, crit: 0.11, mp: 50, mpLv: 5, mpRegen: 1.6 },
+    attack: { kind: 'melee', cd: 0.25, mult: 0.8, range: 52, arc: 0.75, knock: 100 },
+    skills: [
+      { name: '기습', cd: 5, mp: 10, unlock: 3, desc: '조준 방향으로 빠르게 파고들어 적을 꿰뚫는다. 돌진 중 무적.' },
+      { name: '쌍수 난도질', cd: 6, mp: 18, unlock: 10, desc: '앞쪽의 적을 빠르게 베어 큰 피해를 준다.' },
+      { name: '독 연막', cd: 12, mp: 30, unlock: 15, desc: '주변에 독 연막을 퍼뜨려 피해를 주고 적을 느리게 만든다.' },
+      { name: '그림자 난무', cd: 20, mp: 60, unlock: 20, desc: '넓은 범위를 휩쓸어 치명적인 연속 참격을 가한다.' },
+    ],
+    passive: { name: '급소 공격', desc: '치명타 피해가 증가한다. 레벨이 오를수록 더 강해진다.' },
+    weaponNoun: '단검',
+    desc: '빠른 단검 연속 공격과 높은 치명타 피해를 자랑한다.',
+  },
   gnome: {
     name: '마법사', race: '노움', color: 0x9c5bd6, r: 10, height: 32, speed: 150, aggro: 1.2,
     mainAttr: 'int',
@@ -153,13 +170,17 @@ export const SKILL = {
   snipe: { speed: 820, range: 680, mult: 3 }, // 궁수 2
   rain: { distance: 240, radius: 95, arrows: 12, aoe: 34, mult: 0.75 }, // 궁수 3
   storm: { arrows: 16, mult: 1.5 }, // 궁수 4
+  ambush: { time: 0.16, speed: 920, mult: 1.8, knock: 120 }, // 로그 1
+  flurry: { radius: 76, arc: 0.95, mult: 1.8, knock: 120 }, // 로그 2
+  poisonSmoke: { radius: 130, mult: 1.2, slow: 2.5 }, // 로그 3
+  shadowDance: { radius: 118, arc: 2.4, mult: 3.2, knock: 220 }, // 로그 4
   heal: { radius: 200, ratio: 0.3 }, // 마법사 1
   frost: { radius: 125, mult: 1.0, slow: 3 }, // 마법사 2
   fireball: { speed: 380, range: 380, aoe: 120, mult: 2.5 }, // 마법사 3
   meteor: { distance: 260, aoe: 170, mult: 5, fall: 1.0 }, // 마법사 4
 };
 
-export const CLASS_ORDER: ClassId[] = ['swordsman', 'dwarf', 'elf', 'gnome'];
+export const CLASS_ORDER: ClassId[] = ['swordsman', 'dwarf', 'elf', 'rogue', 'gnome'];
 
 // ─── 패시브 스킬 ──────────────────────────────────────
 
@@ -173,6 +194,8 @@ export const PASSIVE = {
   multiShot: { levels: [1, 10, 20], spread: 0.14 },
   // 마법사 마나 순환: 적을 쓰러뜨리면 최대 MP의 %. everyLevels 레벨마다 +1% (1레벨 0%), 최대 max%
   manaFlow: { everyLevels: 10, max: 30 },
+  // 로그 급소 공격: 치명타 피해 배율 base에서 everyLevels 레벨마다 increase, 최대 max
+  rogueCrit: { base: 1.8, everyLevels: 10, increase: 0.1, max: 2.4 },
 };
 
 /** 검사 흡혈 베기: 기본 공격 피해 중 HP로 돌아오는 비율 (0.01 = 1%) */
@@ -198,6 +221,12 @@ export function manaFlowRate(level: number) {
   return Math.min(m.max, Math.floor(level / m.everyLevels)) / 100;
 }
 
+/** 로그 급소 공격: 치명타 피해 배율 */
+export function rogueCritMultiplier(level: number) {
+  const c = PASSIVE.rogueCrit;
+  return Math.min(c.max, c.base + Math.floor(level / c.everyLevels) * c.increase);
+}
+
 /** 이 레벨에서 패시브의 지금 효과 (화면 표시용 짧은 글) */
 export function passiveText(cls: ClassId, level: number): string {
   switch (cls) {
@@ -209,6 +238,8 @@ export function passiveText(cls: ClassId, level: number): string {
       return `기본 공격 화살 ${arrowCount(level)}발`;
     case 'gnome':
       return `처치 시 최대 MP의 ${Math.round(manaFlowRate(level) * 100)}% 회복`;
+    case 'rogue':
+      return `치명타 피해 ×${rogueCritMultiplier(level).toFixed(1)}`;
   }
 }
 
@@ -224,5 +255,9 @@ export function passiveGrowthText(cls: ClassId): string {
       return `기본 공격 화살 ${PASSIVE.multiShot.levels.map((lv, i) => `Lv${lv} ${i + 1}발`).join(' · ')}`;
     case 'gnome':
       return `처치 시 최대 MP의 ${m.everyLevels}레벨마다 +1% 회복 (최대 ${m.max}%)`;
+    case 'rogue': {
+      const c = PASSIVE.rogueCrit;
+      return `치명타 피해 Lv1 ×${c.base.toFixed(1)} · ${c.everyLevels}레벨마다 +${c.increase.toFixed(1)} (최대 ×${c.max.toFixed(1)})`;
+    }
   }
 }

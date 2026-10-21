@@ -55,6 +55,7 @@ export function playEventSound(sfx: Sound, e: GameEvent, myId: string) {
       else if (e.cls === 'swordsman') sfx.pick(['unsheathe1', 'unsheathe2'], { at, volume: vol });
       else if (e.cls === 'dwarf') sfx.play('unsheathe2', { at, volume: vol, rate: 0.75 });
       else if (e.cls === 'elf') sfx.play('swing3', { at, volume: vol, rate: 1.5 });
+      else if (e.cls === 'rogue') sfx.play('swing3', { at, volume: vol, rate: 1.8 });
       else sfx.play('magic', { at, volume: vol, rate: e.idx === 1 ? 1.5 : 1 });
       break;
     }
