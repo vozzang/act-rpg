@@ -17,7 +17,8 @@ const INV_GAP = 5;
 const INV_X = BAR_CENTER - (INV_SIZE * INV_SLOT + (INV_SIZE - 1) * INV_GAP) / 2;
 const INV_Y = VIEW_H - INV_SLOT - 8;
 const SKILL_Y = INV_Y - 6 - SKILL_SLOT;
-const INFO_H = 76;
+const INFO_H = 108;
+const INFO_W = 400;
 /** 아이템 상자 칸 단축키 (GameScene.readHotkeys와 같은 순서) */
 const SLOT_KEYS = ['5', '6', '7', '8', '9', '0'];
 /** 스킬 칸에 표시할 키: 키보드 / 게임패드 (GameScene.readInput의 배치와 같다) */
@@ -72,8 +73,8 @@ export class Hud {
     onAllocate: (attr: AttrKey) => void, onSlot: (idx: number) => void, hintBottom: number,
   ) {
     this.g = scene.add.graphics().setDepth(100);
-    for (let i = 0; i < 4; i++) this.panelTexts.push(makeText(scene, 16 + i * 236, 12, '', 13).setDepth(101));
-    this.infoText = makeText(scene, 12, VIEW_H - INFO_H + 4, '', 12).setDepth(101).setLineSpacing(3);
+    for (let i = 0; i < 4; i++) this.panelTexts.push(makeText(scene, 16 + i * 236, 12, '', 12).setDepth(101));
+    this.infoText = makeText(scene, 16, VIEW_H - INFO_H + 6, '', 13).setDepth(101).setLineSpacing(3);
     this.pointsText = makeText(scene, 12, VIEW_H - INFO_H - 52, '', 14).setDepth(101).setColor('#ffd040').setStroke('#000', 4);
 
     // 능력치 배분 버튼 (Shift+숫자키와 같음)
@@ -164,24 +165,43 @@ export class Hud {
   /** 위쪽 파티 패널: 이름, HP / MP / 경험치 막대 */
   private drawPanels(s: Snapshot) {
     const g = this.g;
-    s.players.forEach((p, i) => {
-      const x = 8 + i * 236, y = 8;
+    const players = [...s.players];
+    const myIndex = players.findIndex((p) => p.id === this.myId);
+    if (myIndex > 0) players.unshift(players.splice(myIndex, 1)[0]);
+
+    let x = 8;
+    players.forEach((p, i) => {
+      const isMe = p.id === this.myId;
+      const y = 8;
+      const w = isMe ? 200 : 128;
+      const h = isMe ? 50 : 34;
+      const barW = w - 18;
       const def = CLASSES[p.cls];
-      g.fillStyle(0x000000, 0.55).fillRoundedRect(x, y, 228, 62, 6);
-      if (p.id === this.myId) g.lineStyle(2, 0xffffff, 0.8).strokeRoundedRect(x, y, 228, 62, 6);
-      g.fillStyle(def.color, 1).fillRect(x, y + 4, 4, 54);
-      g.fillStyle(0x331111, 1).fillRect(x + 10, y + 28, 210, 11);
-      g.fillStyle(p.dead ? 0x555555 : 0xe04848, 1).fillRect(x + 10, y + 28, (210 * p.hp) / p.stats.maxHp, 11);
-      g.fillStyle(0x111a33, 1).fillRect(x + 10, y + 42, 210, 7);
-      g.fillStyle(0x3a6aff, 1).fillRect(x + 10, y + 42, (210 * p.mp) / Math.max(1, p.stats.maxMp), 7);
-      g.fillStyle(0x112222, 1).fillRect(x + 10, y + 52, 210, 4);
-      g.fillStyle(0xd0c040, 1).fillRect(x + 10, y + 52, (210 * p.xp) / p.xpNext, 4);
+      g.fillStyle(0x000000, 0.55).fillRoundedRect(x, y, w, h, 6);
+      // if (isMe) g.lineStyle(2, 0xffffff, 0.8).strokeRoundedRect(x, y, w, h, 6); // 내 정보창은 흰색 테두리
+      g.fillStyle(def.color, 1).fillRect(x, y + 3, 3, h - 6);
+      const hpY = isMe ? y + 20 : y + 16;
+      const hpH = isMe ? 7 : 5;
+      const mpY = isMe ? y + 29 : y + 23;
+      const mpH = isMe ? 5 : 4;
+      const xpY = isMe ? y + 36 : y + 29;
+      const xpH = isMe ? 3 : 2;
+      g.fillStyle(0x331111, 1).fillRect(x + 9, hpY, barW, hpH);
+      g.fillStyle(p.dead ? 0x555555 : 0xe04848, 1).fillRect(x + 9, hpY, (barW * p.hp) / p.stats.maxHp, hpH);
+      g.fillStyle(0x111a33, 1).fillRect(x + 9, mpY, barW, mpH);
+      g.fillStyle(0x3a6aff, 1).fillRect(x + 9, mpY, (barW * p.mp) / Math.max(1, p.stats.maxMp), mpH);
+      g.fillStyle(0x112222, 1).fillRect(x + 9, xpY, barW, xpH);
+      g.fillStyle(0xd0c040, 1).fillRect(x + 9, xpY, (barW * p.xp) / p.xpNext, xpH);
       this.panelTexts[i]
-        .setText(`Lv.${p.level} ${def.name} ${p.name}  ${Math.ceil(p.hp)}/${p.stats.maxHp}`)
-        .setPosition(x + 10, y + 8)
+        .setText(isMe
+          ? `Lv.${p.level} ${def.name} ${p.name}  ${Math.ceil(p.hp)}/${p.stats.maxHp}`
+          : `Lv.${p.level} ${p.name}`)
+        .setFontSize(isMe ? 12 : 9)
+        .setPosition(x + 9, y + (isMe ? 4 : 3))
         .setVisible(true);
+      x += w + (isMe ? 8 : 6);
     });
-    for (let i = s.players.length; i < 4; i++) this.panelTexts[i].setVisible(false);
+    for (let i = players.length; i < 4; i++) this.panelTexts[i].setVisible(false);
   }
 
   /** 왼쪽 아래 내 정보: 능력치, 전투 수치, MP·돈, 패시브 + 남은 능력치 포인트 */
@@ -189,12 +209,16 @@ export class Hud {
     const main = CLASSES[me.cls].mainAttr;
     const pct = (v: number) => Math.round(v * 100);
     this.infoText.setText([
-      ATTR_KEYS.map((k) => `${k === main ? '★' : ''}${ATTR_NAMES[k]} ${me.attrs[k]}`).join('   '),
-      `공격 ${me.stats.atk}  방어 ${me.stats.def}  치명 ${pct(me.stats.crit)}%  회피 ${pct(me.stats.dodge)}%  공속 +${pct(me.stats.haste)}%  스킬가속 +${pct(me.stats.cdr)}%`,
+      `내 정보  ·  ${ATTR_KEYS.map((k) => `${k === main ? '★' : ''}${ATTR_NAMES[k]} ${me.attrs[k]}`).join('   ')}`,
+      `공격 ${me.stats.atk}  방어 ${me.stats.def}  치명 ${pct(me.stats.crit)}%  회피 ${pct(me.stats.dodge)}%`,
+      `공속 +${pct(me.stats.haste)}%  스킬가속 +${pct(me.stats.cdr)}%`,
       `MP ${Math.floor(me.mp)}/${me.stats.maxMp}  (초당 +${me.stats.mpRegen.toFixed(1)})      ${me.gold} G`,
       `패시브 ${CLASSES[me.cls].passive.name}: ${passiveText(me.cls, me.level)}`,
     ]);
-    this.g.fillStyle(0x000000, 0.45).fillRoundedRect(4, VIEW_H - INFO_H - 4, 400, INFO_H, 6);
+    const panelY = VIEW_H - INFO_H - 4;
+    this.g.fillStyle(0x000000, 0.65).fillRoundedRect(4, panelY, INFO_W, INFO_H, 6);
+    this.g.lineStyle(1, CLASSES[me.cls].color, 0.8).strokeRoundedRect(4, panelY, INFO_W, INFO_H, 6);
+    this.g.fillStyle(CLASSES[me.cls].color, 1).fillRect(8, panelY + 6, 4, INFO_H - 12);
 
     const hasPoints = me.points > 0;
     this.pointsText

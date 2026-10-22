@@ -37,16 +37,16 @@ export const ITEM_LIST: ItemDef[] = [
   { key: 'plate1', name: '선봉대 판금', base: '판금 갑옷', slot: 'armor', rarity: 'epic', tier: 1, from: ['drop', 'shop'], stats: { def: 11, vit: 8, str: 4 } }, // 영웅
   { key: 'necklace1', name: '개척자 목걸이', base: '목걸이', slot: 'accessory', rarity: 'epic', tier: 1, from: ['drop'], stats: { crit: 0.05, str: 4, dex: 4, int: 4 } }, // 영웅
   { key: 'goblinfang', name: '폭군의 송곳니', base: '고블린 왕의 송곳니', slot: 'weapon', rarity: 'legendary', tier: 1, from: ['drop'], stats: { atk: 32, str: 6, dex: 6 } }, // 전설 (이 단계에 하나뿐)
-  { key: 'giant1', name: '거암의 대검', base: '거인의 대검', slot: 'weapon', rarity: 'legendary', tier: 1, from: ['recipe'], stats: { atk: 49, str: 19, crit: 0.05 } }, // 조합법
-  { key: 'wind1', name: '질풍의 장궁', base: '바람의 장궁', slot: 'weapon', rarity: 'legendary', tier: 1, from: ['recipe'], stats: { atk: 49, dex: 19, crit: 0.08 } }, // 조합법
-  { key: 'sage1', name: '지혜의 지팡이', base: '현자의 지팡이', slot: 'weapon', rarity: 'legendary', tier: 1, from: ['recipe'], stats: { atk: 49, int: 19, maxHp: 40 } }, // 조합법
-  { key: 'trinity1', name: '조화의 검', base: '삼위일체의 검', slot: 'weapon', rarity: 'legendary', tier: 1, from: ['recipe'], stats: { atk: 55, str: 12, dex: 12, int: 12 } }, // 조합법
-  { key: 'guardian1', name: '파수꾼 판금', base: '수호자의 판금', slot: 'armor', rarity: 'legendary', tier: 1, from: ['recipe'], stats: { def: 26, vit: 18, str: 8 } }, // 조합법
-  { key: 'life1', name: '새싹의 부적', base: '생명의 부적', slot: 'accessory', rarity: 'legendary', tier: 1, from: ['recipe'], stats: { maxHp: 146, vit: 14 } }, // 조합법
-  { key: 'fatal1', name: '살의의 반지', base: '치명의 반지', slot: 'accessory', rarity: 'legendary', tier: 1, from: ['recipe'], stats: { crit: 0.23, atk: 16 } }, // 조합법
-  { key: 'hero1', name: '모험가 목걸이', base: '용사의 목걸이', slot: 'accessory', rarity: 'legendary', tier: 1, from: ['recipe'], stats: { atk: 16, def: 8, crit: 0.13, maxHp: 81 } }, // 조합법
-  { key: 'hammer1', name: '대장간 망치', base: '무쇠 대장장이의 망치', slot: 'weapon', rarity: 'legendary', tier: 1, from: ['recipe'], stats: { atk: 45, str: 12, vit: 12 } }, // 조합법
-  { key: 'bulwark1', name: '성벽의 갑주', base: '철벽의 갑주', slot: 'armor', rarity: 'legendary', tier: 1, from: ['recipe'], stats: { def: 24, vit: 15, maxHp: 81 } }, // 조합법
+  { key: 'giant1', name: '거암의 대검', base: '거인의 대검', slot: 'weapon', rarity: 'epic', tier: 1, from: ['recipe'], stats: { atk: 49, str: 19, crit: 0.05 } }, // 조합법
+  { key: 'wind1', name: '질풍의 장궁', base: '바람의 장궁', slot: 'weapon', rarity: 'epic', tier: 1, from: ['recipe'], stats: { atk: 49, dex: 19, crit: 0.08 } }, // 조합법
+  { key: 'sage1', name: '지혜의 지팡이', base: '현자의 지팡이', slot: 'weapon', rarity: 'epic', tier: 1, from: ['recipe'], stats: { atk: 49, int: 19, maxHp: 40 } }, // 조합법
+  { key: 'trinity1', name: '조화의 검', base: '삼위일체의 검', slot: 'weapon', rarity: 'epic', tier: 1, from: ['recipe'], stats: { atk: 55, str: 12, dex: 12, int: 12 } }, // 조합법
+  { key: 'guardian1', name: '파수꾼 판금', base: '수호자의 판금', slot: 'armor', rarity: 'epic', tier: 1, from: ['recipe'], stats: { def: 26, vit: 18, str: 8 } }, // 조합법
+  { key: 'life1', name: '새싹의 부적', base: '생명의 부적', slot: 'accessory', rarity: 'epic', tier: 1, from: ['recipe'], stats: { maxHp: 146, vit: 14 } }, // 조합법
+  { key: 'fatal1', name: '살의의 반지', base: '치명의 반지', slot: 'accessory', rarity: 'epic', tier: 1, from: ['recipe'], stats: { crit: 0.23, atk: 16 } }, // 조합법
+  { key: 'hero1', name: '모험가 목걸이', base: '용사의 목걸이', slot: 'accessory', rarity: 'epic', tier: 1, from: ['recipe'], stats: { atk: 16, def: 8, crit: 0.13, maxHp: 81 } }, // 조합법
+  { key: 'hammer1', name: '대장간 망치', base: '무쇠 대장장이의 망치', slot: 'weapon', rarity: 'epic', tier: 1, from: ['recipe'], stats: { atk: 45, str: 12, vit: 12 } }, // 조합법
+  { key: 'bulwark1', name: '성벽의 갑주', base: '철벽의 갑주', slot: 'armor', rarity: 'epic', tier: 1, from: ['recipe'], stats: { def: 24, vit: 15, maxHp: 81 } }, // 조합법
   // ── 2단계 (3·4구역) · 강철 ──
   { key: 'sword2', name: '서리강철 검', base: '검', slot: 'weapon', rarity: 'common', tier: 2, from: ['drop'], stats: { atk: 17, str: 4 } }, // 일반
   { key: 'bow2', name: '북풍의 활', base: '활', slot: 'weapon', rarity: 'common', tier: 2, from: ['drop'], stats: { atk: 16, dex: 4 } }, // 일반
@@ -62,16 +62,16 @@ export const ITEM_LIST: ItemDef[] = [
   { key: 'plate2', name: '백은의 판금', base: '판금 갑옷', slot: 'armor', rarity: 'epic', tier: 2, from: ['drop', 'shop'], stats: { def: 20, vit: 15, str: 8 } }, // 영웅
   { key: 'necklace2', name: '북극성 목걸이', base: '목걸이', slot: 'accessory', rarity: 'epic', tier: 2, from: ['drop'], stats: { crit: 0.08, str: 8, dex: 8, int: 8 } }, // 영웅
   { key: 'frostfang', name: '혹한의 송곳니', base: '서리 송곳니', slot: 'weapon', rarity: 'legendary', tier: 2, from: ['drop'], stats: { atk: 61, dex: 16, crit: 0.1 } }, // 전설 (이 단계에 하나뿐)
-  { key: 'giant2', name: '거신병 대검', base: '거인의 대검', slot: 'weapon', rarity: 'legendary', tier: 2, from: ['recipe'], stats: { atk: 92, str: 36, crit: 0.05 } }, // 조합법
-  { key: 'wind2', name: '삭풍의 장궁', base: '바람의 장궁', slot: 'weapon', rarity: 'legendary', tier: 2, from: ['recipe'], stats: { atk: 92, dex: 36, crit: 0.08 } }, // 조합법
-  { key: 'sage2', name: '진리의 지팡이', base: '현자의 지팡이', slot: 'weapon', rarity: 'legendary', tier: 2, from: ['recipe'], stats: { atk: 92, int: 36, maxHp: 94 } }, // 조합법
-  { key: 'trinity2', name: '균형의 성검', base: '삼위일체의 검', slot: 'weapon', rarity: 'legendary', tier: 2, from: ['recipe'], stats: { atk: 104, str: 22, dex: 22, int: 22 } }, // 조합법
-  { key: 'guardian2', name: '수호기사 판금', base: '수호자의 판금', slot: 'armor', rarity: 'legendary', tier: 2, from: ['recipe'], stats: { def: 49, vit: 34, str: 16 } }, // 조합법
-  { key: 'life2', name: '신록의 부적', base: '생명의 부적', slot: 'accessory', rarity: 'legendary', tier: 2, from: ['recipe'], stats: { maxHp: 340, vit: 27 } }, // 조합법
-  { key: 'fatal2', name: '암살의 반지', base: '치명의 반지', slot: 'accessory', rarity: 'legendary', tier: 2, from: ['recipe'], stats: { crit: 0.36, atk: 31 } }, // 조합법
-  { key: 'hero2', name: '투사의 목걸이', base: '용사의 목걸이', slot: 'accessory', rarity: 'legendary', tier: 2, from: ['recipe'], stats: { atk: 31, def: 15, crit: 0.2, maxHp: 189 } }, // 조합법
-  { key: 'hammer2', name: '명장의 망치', base: '무쇠 대장장이의 망치', slot: 'weapon', rarity: 'legendary', tier: 2, from: ['recipe'], stats: { atk: 86, str: 22, vit: 22 } }, // 조합법
-  { key: 'bulwark2', name: '철벽의 갑주', base: '철벽의 갑주', slot: 'armor', rarity: 'legendary', tier: 2, from: ['recipe'], stats: { def: 46, vit: 29, maxHp: 189 } }, // 조합법
+  { key: 'giant2', name: '거신병 대검', base: '거인의 대검', slot: 'weapon', rarity: 'epic', tier: 2, from: ['recipe'], stats: { atk: 92, str: 36, crit: 0.05 } }, // 조합법
+  { key: 'wind2', name: '삭풍의 장궁', base: '바람의 장궁', slot: 'weapon', rarity: 'epic', tier: 2, from: ['recipe'], stats: { atk: 92, dex: 36, crit: 0.08 } }, // 조합법
+  { key: 'sage2', name: '진리의 지팡이', base: '현자의 지팡이', slot: 'weapon', rarity: 'epic', tier: 2, from: ['recipe'], stats: { atk: 92, int: 36, maxHp: 94 } }, // 조합법
+  { key: 'trinity2', name: '균형의 성검', base: '삼위일체의 검', slot: 'weapon', rarity: 'epic', tier: 2, from: ['recipe'], stats: { atk: 104, str: 22, dex: 22, int: 22 } }, // 조합법
+  { key: 'guardian2', name: '수호기사 판금', base: '수호자의 판금', slot: 'armor', rarity: 'epic', tier: 2, from: ['recipe'], stats: { def: 49, vit: 34, str: 16 } }, // 조합법
+  { key: 'life2', name: '신록의 부적', base: '생명의 부적', slot: 'accessory', rarity: 'epic', tier: 2, from: ['recipe'], stats: { maxHp: 340, vit: 27 } }, // 조합법
+  { key: 'fatal2', name: '암살의 반지', base: '치명의 반지', slot: 'accessory', rarity: 'epic', tier: 2, from: ['recipe'], stats: { crit: 0.36, atk: 31 } }, // 조합법
+  { key: 'hero2', name: '투사의 목걸이', base: '용사의 목걸이', slot: 'accessory', rarity: 'epic', tier: 2, from: ['recipe'], stats: { atk: 31, def: 15, crit: 0.2, maxHp: 189 } }, // 조합법
+  { key: 'hammer2', name: '명장의 망치', base: '무쇠 대장장이의 망치', slot: 'weapon', rarity: 'epic', tier: 2, from: ['recipe'], stats: { atk: 86, str: 22, vit: 22 } }, // 조합법
+  { key: 'bulwark2', name: '철벽의 갑주', base: '철벽의 갑주', slot: 'armor', rarity: 'epic', tier: 2, from: ['recipe'], stats: { def: 46, vit: 29, maxHp: 189 } }, // 조합법
   // ── 3단계 (5·6구역) · 미스릴 ──
   { key: 'sword3', name: '미스릴 세검', base: '검', slot: 'weapon', rarity: 'common', tier: 3, from: ['drop'], stats: { atk: 25, str: 6 } }, // 일반
   { key: 'bow3', name: '별빛의 활', base: '활', slot: 'weapon', rarity: 'common', tier: 3, from: ['drop'], stats: { atk: 24, dex: 6 } }, // 일반
