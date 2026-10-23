@@ -60,6 +60,7 @@ export class Hud {
   private attrButtons: Phaser.GameObjects.Text[] = [];
   private skillTexts: { name: Phaser.GameObjects.Text; info: Phaser.GameObjects.Text }[] = [];
   private invTexts: { label: Phaser.GameObjects.Text; count: Phaser.GameObjects.Text }[] = [];
+  private invIcons: (Phaser.GameObjects.Image | undefined)[] = [];
   private tooltip: Phaser.GameObjects.Text;
   private bossText: Phaser.GameObjects.Text;
   private dungeonText: Phaser.GameObjects.Text;
@@ -274,10 +275,22 @@ export class Hud {
       const t = this.invTexts[i];
       const hover = inside(r, ptr.x, ptr.y);
       const color = slotColor(sl);
+      const frostBow = sl?.kind === 'item' && sl.item.key === 'frostbow';
+      const frostBowIconReady = frostBow && this.scene.textures.exists('frostbow-icon');
       g.fillStyle(0x10161f, 0.9).fillRoundedRect(r.x, r.y, r.w, r.h, 5);
       if (sl) g.fillStyle(color, hover ? 0.45 : 0.3).fillRoundedRect(r.x, r.y, r.w, r.h, 5);
       g.lineStyle(2, sl ? color : 0x334455, sl ? 1 : 0.7).strokeRoundedRect(r.x, r.y, r.w, r.h, 5);
-      t.label.setText(slotLabel(sl, me));
+      t.label.setText(frostBowIconReady ? '' : slotLabel(sl, me));
+      if (frostBowIconReady) {
+        let icon = this.invIcons[i];
+        if (!icon) {
+          icon = this.scene.add.image(r.x + r.w / 2, r.y + r.h / 2, 'frostbow-icon').setDisplaySize(38, 38).setDepth(101);
+          this.invIcons[i] = icon;
+        }
+        icon.setVisible(true);
+      } else {
+        this.invIcons[i]?.setVisible(false);
+      }
       t.count.setText(sl && sl.kind !== 'item' ? `×${sl.count}` : '');
       if (hover && sl) tip = { text: slotTooltip(sl, me, SLOT_KEYS[i]), x: r.x + r.w / 2, y: r.y };
     });

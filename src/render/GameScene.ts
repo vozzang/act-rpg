@@ -104,6 +104,10 @@ export class GameScene extends Phaser.Scene {
     this.events.once('shutdown', destroyWorld);
     this.events.once('destroy', destroyWorld);
     this.world.load().then(() => (this.ready = true));
+    if (!this.textures.exists('frostbow-icon')) {
+      this.load.image('frostbow-icon', 'assets/frostbow/frostbow.jpg');
+      this.load.start();
+    }
 
     this.marks = this.add.graphics().setDepth(5);
     this.hintText = makeText(this, 0, 0, '', 13).setDepth(50).setOrigin(0.5, 1).setStroke('#000', 4);

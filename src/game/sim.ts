@@ -1480,7 +1480,9 @@ export class Sim {
       this.spawnDrop({ kind: this.rng() < 0.5 ? 'hpFood' : 'mpFood' }, e.x, e.y);
       // 유니크 전설 무기: 5구역부터 낮은 확률로, 이번 판에 아직 안 나온 것 중 하나
       if (e.zone >= UNIQUE_DROP.fromZone && this.rng() < UNIQUE_DROP.chance) {
-        const left = ITEM_LIST.filter((d) => d.from.includes('unique') && !this.uniquesDropped.has(d.key));
+        const partyClasses = new Set(this.players.map((p) => p.cls));
+        const left = ITEM_LIST.filter((d) => d.from.includes('unique') && !this.uniquesDropped.has(d.key)
+          && (!d.cls || partyClasses.has(d.cls)));
         if (left.length) {
           const d = left[Math.floor(this.rng() * left.length)];
           this.uniquesDropped.add(d.key);

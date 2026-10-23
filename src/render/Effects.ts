@@ -264,6 +264,15 @@ export class Effects {
       const items = p.inv.flatMap((sl) => (sl?.kind === 'item' ? [sl.item] : []));
       const bag = p.bag.filter(Boolean).length;
       for (const it of items) {
+        if (it.key === 'frostbow' && sc.textures.exists('frostbow-icon')) {
+          if (x + 34 > VIEW_W - 140) {
+            text(x, iy, '…', 12, '#8d9ab3').setOrigin(0, 0);
+            break;
+          }
+          sc.add.image(x, iy - 7, 'frostbow-icon').setDisplaySize(30, 30).setOrigin(0, 0).setDepth(D + 1);
+          x += 38;
+          continue;
+        }
         const t = text(x, iy, itemName(it, p.cls), 12, RARITY[it.rarity].color).setOrigin(0, 0);
         x += t.width + 12;
         if (x > VIEW_W - 140) {

@@ -150,12 +150,13 @@ export const ITEM_LIST: ItemDef[] = [
 
   // ── 유니크 전설 무기: 단계가 하나뿐이고, 5구역부터 중간보스·문지기가 낮은 확률로 떨어뜨린다 (한 판에 같은 무기는 한 번만, UNIQUE_DROP) ──
   // 수치는 4단계(7·8구역) 조합 전설 정도. 대신 맞히면 일정 확률로 특수 효과 (WEAPON_EFFECTS). 각자 한 직업만 착용할 수 있다 (cls)
+  { key: 'quakeaxe', name: '대지파괴자', base: '대지 분쇄 도끼', slot: 'weapon', rarity: 'legendary', tier: 4, from: ['unique'], stats: { atk: 160, str: 35, vit: 35 }, effect: 'quake', cls: 'dwarf' }, // 대지 가르기: 주변 충격파 · 수호자 전용
   { key: 'frostbow', name: '빙설의 신궁', base: '서리바람 활', slot: 'weapon', rarity: 'legendary', tier: 4, from: ['unique'], stats: { atk: 160, dex: 45, crit: 0.08 }, effect: 'frost', cls: 'elf' }, // 서리: 둔화 · 궁수 전용
   { key: 'hellstaff', name: '업화 지팡이', base: '업화의 지팡이', slot: 'weapon', rarity: 'legendary', tier: 4, from: ['unique'], stats: { atk: 160, int: 45, maxHp: 120 }, effect: 'burn', cls: 'gnome' }, // 화염: 지속 피해 · 마법사 전용
   { key: 'bloodsword', name: '선혈의 마검', base: '선혈의 검', slot: 'weapon', rarity: 'legendary', tier: 4, from: ['unique'], stats: { atk: 170, str: 45, crit: 0.06 }, effect: 'bleed', cls: 'swordsman' }, // 출혈: 겹치는 지속 피해 · 검사 전용
+  { key: 'shadowdagger', name: '월식의 비수', base: '암살자의 단검', slot: 'weapon', rarity: 'legendary', tier: 4, from: ['unique'], stats: { atk: 160, dex: 45, crit: 0.12 }, effect: 'bleed', cls: 'rogue' }, // 출혈: 겹치는 지속 피해 · 로그 전용
   // ── 던전 보상: 7구역 모래 폭군의 무덤을 클리어하면 하나 (DUNGEONS[7].reward). 누구나 착용, 맞을 때 30% 확률로 피해를 막는다 ──
   { key: 'pharaohArmor', name: '태양왕 갑주', base: '파라오의 황금 갑주', slot: 'armor', rarity: 'legendary', tier: 4, from: ['dungeon'], stats: { def: 75, vit: 50, maxHp: 250 }, effect: 'aegis' }, // 절대방어
   // ── 던전 보상: 9구역 무법자의 묘지를 클리어하면 하나 (DUNGEONS[9].reward). 누구나 착용, 쓰러질 피해를 한 번 버틴다 ──
   { key: 'outlawCharm', name: '해골왕 목걸이', base: '무법자의 해골 목걸이', slot: 'accessory', rarity: 'legendary', tier: 5, from: ['dungeon'], stats: { maxHp: 350, vit: 35, def: 25, crit: 0.06 }, effect: 'undying' }, // 불사
-  { key: 'quakeaxe', name: '대지파괴자', base: '대지 분쇄 도끼', slot: 'weapon', rarity: 'legendary', tier: 4, from: ['unique'], stats: { atk: 160, str: 35, vit: 35 }, effect: 'quake', cls: 'dwarf' }, // 대지 가르기: 주변 충격파 · 수호자 전용
 ];
