@@ -59,7 +59,13 @@ export class HostNet {
     peer.on('connection', (conn) => this.handleConnection(conn));
   }
 
-  static async create(): Promise<HostNet> {
+  static async create(requestedCode?: string): Promise<HostNet> {
+    const code = requestedCode?.trim().toUpperCase();
+    if (code && !/^[A-Z0-9]{4,12}$/.test(code)) {
+      throw new Error('방 코드는 영문 대문자와 숫자 4~12자로 입력하세요.');
+    }
+    if (code) return new HostNet(await openPeer(PREFIX + code), code);
+
     for (let attempt = 0; attempt < 5; attempt++) {
       const code = randomCode();
       try {

@@ -16,6 +16,8 @@ export interface Session {
   startLevel?: number;
   /** 개발용: 시작 구역 (개발 서버 로비의 '시작 구역', 방장·혼자만 쓴다). 없으면 1 */
   startZone?: number;
+  /** SAEBOM 방: 레벨 10 및 직업별 유니크 무기로 시작 */
+  specialStart?: boolean;
   host?: HostNet; // 방장일 때 네트워크
   client?: ClientNet; // 참가자일 때 네트워크
   /** 호스트/솔로가 '로비로' 버튼을 눌렀을 때 */

@@ -95,6 +95,10 @@
       <label class="check"><input type="checkbox" id="skip-story" /> 스토리 건너뛰기 <span class="hint" style="margin:0">(인트로·구역 이야기·엔딩을 보지 않는다. 게임 중에도 건너뛸 수 있다)</span></label>
       <!-- 개발 서버에서만: 시작 레벨·시작 구역 줄을 main.ts가 여기에 만들어 넣는다 (배포판에는 없다) -->
       <div id="dev-rows"></div>
+      <div>
+        <label for="create-code">방 코드 직접 지정 (선택)</label>
+        <input id="create-code" maxlength="12" placeholder="비우면 자동 생성" style="text-transform: uppercase" />
+      </div>
       <div class="row">
         <button id="btn-create" class="primary">방 만들기</button>
         <button id="btn-solo">혼자 하기</button>
@@ -102,7 +106,7 @@
       <div class="row">
         <div>
           <label for="code">방 코드로 참가</label>
-          <input id="code" maxlength="5" placeholder="ABCDE" style="text-transform: uppercase" />
+          <input id="code" maxlength="12" placeholder="ABCDE" style="text-transform: uppercase" />
         </div>
         <button id="btn-join">참가하기</button>
       </div>

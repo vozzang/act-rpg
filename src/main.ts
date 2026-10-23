@@ -9,6 +9,7 @@ import type { Session } from './session';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const hex = (n: number) => '#' + n.toString(16).padStart(6, '0');
+const SPECIAL_ROOM_CODE = 'SAEBOM';
 
 let role: Session['role'] = 'solo';
 let host: HostNet | undefined;
@@ -117,7 +118,8 @@ async function createRoom() {
   const name = playerName();
   $('menu-error').textContent = '방을 만드는 중...';
   try {
-    host = await HostNet.create();
+    const requestedCode = $<HTMLInputElement>('create-code').value.trim().toUpperCase();
+    host = await HostNet.create(requestedCode || undefined);
   } catch (e) {
     menuError(`방을 만들 수 없습니다: ${(e as Error).message}`);
     return;
@@ -257,6 +259,7 @@ function startGame(seed: number, players: LobbyPlayer[]) {
     skipStory: $<HTMLInputElement>('skip-story').checked,
     startLevel: import.meta.env.DEV ? Number($<HTMLInputElement>('dev-level').value) || 1 : undefined,
     startZone: import.meta.env.DEV ? Number($<HTMLSelectElement>('dev-zone').value) || 1 : undefined,
+    specialStart: role === 'host' && host?.code === SPECIAL_ROOM_CODE,
     backToLobby: () => {
       host?.broadcast({ t: 'toLobby' });
       endGame();

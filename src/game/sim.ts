@@ -52,12 +52,12 @@ export class Sim {
   private pendingStatus: GameStatus | null = null;
 
   /** seed는 떨어지는 물건 같은 운에만 쓴다. 맵은 모두 같은 맵(gameLevel) */
-  constructor(seed: number, lobby: LobbyPlayer[], level: Level = gameLevel()) {
+  constructor(seed: number, lobby: LobbyPlayer[], level: Level = gameLevel(), start?: { startLevel?: number; uniqueWeapons?: boolean }) {
     this.level = level;
     this.dungeons = level.dungeons.map(() => ({ state: 'open', wave: 0, timer: 0, summon: 0, tombTimer: 0, tombsUp: false, cleared: false }));
     this.rng = mulberry32(seed ^ 0x9e3779b9);
     this.gates = this.level.gates.map(() => false);
-    lobby.forEach((lp, i) => this.players.push(this.createPlayer(lp, i)));
+    lobby.forEach((lp, i) => this.players.push(this.createPlayer(lp, i, start)));
     const party = this.players.length;
     for (const s of this.level.spawns) {
       const elite = s.gate !== undefined ? GATE_KEEPERS[s.gate] : s.elite !== undefined ? ELITES[s.zone - 1][s.elite] : undefined;
@@ -92,18 +92,22 @@ export class Sim {
 
   // ─── 생성 ──────────────────────────────────────────
 
-  private createPlayer(lp: LobbyPlayer, index: number): Player {
+  private createPlayer(lp: LobbyPlayer, index: number, start?: { startLevel?: number; uniqueWeapons?: boolean }): Player {
     const def = CLASSES[lp.cls!];
     const ang = (index / 4) * Math.PI * 2;
+    const level = Math.max(1, Math.min(DEV_MAX_LEVEL, Math.round(start?.startLevel ?? 1)));
+    const uniqueDef = start?.uniqueWeapons ? ITEM_LIST.find((item) => item.from.includes('unique') && item.cls === lp.cls) : undefined;
+    if (start?.uniqueWeapons && !uniqueDef) throw new Error(`직업 ${lp.cls}의 시작 유니크 무기를 찾을 수 없습니다.`);
+    const starterItem = uniqueDef ? { kind: 'item' as const, item: itemFromDef(uniqueDef, this.nextId++) } : null;
     const p: Player = {
       id: lp.id, name: lp.name, cls: lp.cls!,
       x: this.level.start.x + Math.cos(ang) * 24, y: this.level.start.y + Math.sin(ang) * 24,
       vx: 0, vy: 0, r: def.r, aim: 0, moving: false,
-      hp: 0, level: 1, xp: 0, xpNext: xpForLevel(1),
-      attrs: { ...def.attrs }, alloc: { str: 0, dex: 0, int: 0, vit: 0 }, points: 0,
+      hp: 0, level, xp: 0, xpNext: xpForLevel(level),
+      attrs: { ...def.attrs }, alloc: { str: 0, dex: 0, int: 0, vit: 0 }, points: (level - 1) * POINTS_PER_LEVEL,
       gold: 0,
       // 음식 먹는 법을 익히도록 HP·MP 음식을 하나씩 넣어 준다
-      inv: [{ kind: 'hpFood', count: 1 }, { kind: 'mpFood', count: 1 }, ...Array<null>(INV_SIZE - 2).fill(null)],
+      inv: [{ kind: 'hpFood', count: 1 }, { kind: 'mpFood', count: 1 }, ...(starterItem ? [starterItem] : []), ...Array<null>(INV_SIZE - (starterItem ? 3 : 2)).fill(null)],
       bag: Array<null>(BAG_SIZE).fill(null),
       stats: { maxHp: 0, atk: 0, def: 0, crit: 0, haste: 0, dodge: 0, cdr: 0, maxMp: 0, mpRegen: 0 },
       atkCd: 0, atkAnim: 0, skillCds: [0, 0, 0, 0], dashTime: 0, dashSkill: 0, dashHits: [],

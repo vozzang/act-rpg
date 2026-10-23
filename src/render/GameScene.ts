@@ -155,7 +155,7 @@ export class GameScene extends Phaser.Scene {
     for (const key of [this.keys.UP, this.keys.DOWN, this.keys.LEFT, this.keys.RIGHT]) key.on('down', () => (this.aimMode = 'move'));
 
     if (s.role !== 'client') {
-      this.sim = new Sim(s.seed, s.players);
+      this.sim = new Sim(s.seed, s.players, undefined, s.specialStart ? { startLevel: 10, uniqueWeapons: true } : undefined);
       // 개발 중 콘솔에서 상태를 살펴볼 수 있게 노출 (sim: 게임 상태, scene: 화면·입력)
       if (import.meta.env.DEV) Object.assign(window, { sim: this.sim, scene: this });
       // 개발용 장비 시험 창 (` 키). 열려 있는 동안은 게임 키 입력을 막는다 (검색 칸에 글을 쓸 수 있게)
@@ -172,7 +172,7 @@ export class GameScene extends Phaser.Scene {
       // 개발용 시작 구역: 그 구역 입구에서 (앞 구역 문은 열고 몬스터는 치운다)
       if (import.meta.env.DEV && (s.startZone ?? 1) > 1) this.sim.devStartZone(s.startZone!);
       // 개발용 시작 레벨: 모든 플레이어를 그 레벨로
-      if (import.meta.env.DEV && (s.startLevel ?? 1) > 1) for (const p of s.players) this.sim.setLevel(p.id, s.startLevel!);
+      if (!s.specialStart && import.meta.env.DEV && (s.startLevel ?? 1) > 1) for (const p of s.players) this.sim.setLevel(p.id, s.startLevel!);
       s.onRemoteInput = (id, input) => this.sim!.setInput(id, input);
       s.onRemoteAlloc = (id, attr) => this.sim!.allocate(id, attr);
       s.onRemoteBuy = (id, shop, idx) => this.sim!.buy(id, shop, idx);
